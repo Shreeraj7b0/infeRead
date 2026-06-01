@@ -81,11 +81,10 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 
 fun Modifier.zoomable(
-    scale: Float,
-    offset: androidx.compose.ui.geometry.Offset,
     onTransform: (Float, androidx.compose.ui.geometry.Offset, Boolean) -> Unit
 ) = this.pointerInput(Unit) {
-    val size = this.size
+    var scale = 1f
+    var offset = androidx.compose.ui.geometry.Offset.Zero
     awaitEachGesture {
         awaitFirstDown(requireUnconsumed = false)
         do {
@@ -95,23 +94,25 @@ fun Modifier.zoomable(
                 val zoom = event.calculateZoom()
                 val pan = event.calculatePan()
                 val centroid = event.calculateCentroid(useCurrent = false)
-                val newScale = (scale * zoom).coerceIn(1f, 5f)
-                val isZoomed = newScale > 1.01f
+                scale = (scale * zoom).coerceIn(1f, 5f)
+                val isZoomed = scale > 1.01f
+                val size = this.size
                 val pivot = androidx.compose.ui.geometry.Offset(size.width / 2f, size.height / 2f)
                 val d = centroid - pivot
-                val newOffset = offset + pan - d * (newScale / scale - 1f)
-                val maxX = (size.width * (newScale - 1f)) / 2f
-                val maxY = (size.height * (newScale - 1f)) / 2f
-                val clampedOffset = if (newScale <= 1.0f) androidx.compose.ui.geometry.Offset.Zero else androidx.compose.ui.geometry.Offset(newOffset.x.coerceIn(-maxX, maxX), newOffset.y.coerceIn(-maxY, maxY))
-                onTransform(newScale, clampedOffset, isZoomed)
+                offset = offset + pan - d * (zoom - 1f)
+                val maxX = (size.width * (scale - 1f)) / 2f
+                val maxY = (size.height * (scale - 1f)) / 2f
+                offset = if (scale <= 1.0f) androidx.compose.ui.geometry.Offset.Zero else androidx.compose.ui.geometry.Offset(offset.x.coerceIn(-maxX, maxX), offset.y.coerceIn(-maxY, maxY))
+                onTransform(scale, offset, isZoomed)
                 event.changes.forEach { it.consume() }
             } else if (scale > 1.01f && pointers == 1) {
                 val pan = event.calculatePan()
-                val newOffset = offset + pan
+                offset = offset + pan
+                val size = this.size
                 val maxX = (size.width * (scale - 1f)) / 2f
                 val maxY = (size.height * (scale - 1f)) / 2f
-                val clampedOffset = androidx.compose.ui.geometry.Offset(newOffset.x.coerceIn(-maxX, maxX), newOffset.y.coerceIn(-maxY, maxY))
-                onTransform(scale, clampedOffset, true)
+                offset = androidx.compose.ui.geometry.Offset(offset.x.coerceIn(-maxX, maxX), offset.y.coerceIn(-maxY, maxY))
+                onTransform(scale, offset, true)
                 event.changes.forEach { it.consume() }
             }
         } while (event.changes.any { it.pressed })
@@ -257,7 +258,7 @@ fun PdfViewer(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .zoomable(scale, offset) { newScale, newOffset, zoomed ->
+                    .zoomable { newScale, newOffset, zoomed ->
                         scale = newScale
                         offset = newOffset
                         isZoomed = zoomed
@@ -343,7 +344,7 @@ fun PdfViewer(
                                     scaleX = scale; scaleY = scale
                                     translationX = offset.x; translationY = offset.y
                                 }
-                                .zoomable(scale, offset) { newScale, newOffset, zoomed ->
+                                .zoomable { newScale, newOffset, zoomed ->
                                     scale = newScale
                                     offset = newOffset
                                 }
@@ -959,7 +960,7 @@ fun ImageViewer(filePath: String, isNoir: Boolean = false, isNegative: Boolean =
                     onDoubleTap = { onTap() }
                 )
             }
-            .zoomable(scale, offset) { newScale, newOffset, _ ->
+            .zoomable { newScale, newOffset, _ ->
                 scale = newScale
                 offset = newOffset
             }
@@ -1202,7 +1203,7 @@ fun ComicArchiveViewer(
                             translationX = offset.x,
                             translationY = offset.y
                         )
-                        .zoomable(scale, offset) { newScale, newOffset, zoomed ->
+                        .zoomable { newScale, newOffset, zoomed ->
                             scale = newScale
                             offset = newOffset
                             isZoomed = zoomed
@@ -1227,12 +1228,6 @@ fun ComicArchiveViewer(
                                                         pagerState.animateScrollToPage(pagerState.targetPage + 1)
                                                     }
                                                 }
-                                            } else {
-                                                onTap()
-                                            }
-                                        } else {
-                                            if (tapOffset.x > width * 0.2f && tapOffset.x < width * 0.8f) {
-                                                onTap()
                                             }
                                         }
                                     }
@@ -1279,7 +1274,7 @@ fun ComicArchiveViewer(
                                 translationX = offset.x,
                                 translationY = offset.y
                             )
-                            .zoomable(scale, offset) { newScale, newOffset, zoomed ->
+                            .zoomable { newScale, newOffset, zoomed ->
                                 scale = newScale
                                 offset = newOffset
                                 isZoomed = zoomed
