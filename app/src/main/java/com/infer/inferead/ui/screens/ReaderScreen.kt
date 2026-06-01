@@ -872,8 +872,10 @@ fun ReaderScreen(
                                             )
                                         )
                                     }
+                                    true
                                 } else {
                                     textSelectionData = com.infer.inferead.ui.screens.TextSelectionData(text, top, bottom, finalCfi)
+                                    false
                                 }
                             },
                             onTextSelectionCleared = {

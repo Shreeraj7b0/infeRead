@@ -1300,7 +1300,7 @@ class WebAppInterface(
     private val onTextSelectedCallback: (String, Float, Float, String) -> Unit = { _, _, _, _ -> },
     private val onTextSelectionClearedCallback: () -> Unit = {},
     private val onAnnotationClickedCallback: (Int, Float, Float) -> Unit = { _, _, _ -> },
-    private val onSelectionFinishedCallback: (String, Float, Float, String) -> Unit = { _, _, _, _ -> }
+    private val onSelectionFinishedCallback: (String, Float, Float, String) -> Boolean = { _, _, _, _ -> false }
 ) {
     @android.webkit.JavascriptInterface
     fun onTap() { onTapCallback() }
@@ -1320,8 +1320,8 @@ class WebAppInterface(
     }
 
     @android.webkit.JavascriptInterface
-    fun onSelectionFinished(text: String, top: Float, bottom: Float, cfiRange: String) { 
-        onSelectionFinishedCallback(text, top, bottom, cfiRange) 
+    fun onSelectionFinished(text: String, top: Float, bottom: Float, cfiRange: String): Boolean { 
+        return onSelectionFinishedCallback(text, top, bottom, cfiRange) 
     }
     
     @android.webkit.JavascriptInterface
@@ -1340,7 +1340,7 @@ fun EPUBReader(
     onTotalPagesLoaded: (Int, List<String>?) -> Unit,
     onTap: () -> Unit = {},
     onTextSelected: (String, Float, Float, String) -> Unit = { _, _, _, _ -> },
-    onSelectionFinished: (String, Float, Float, String) -> Unit = { _, _, _, _ -> },
+    onSelectionFinished: (String, Float, Float, String) -> Boolean = { _, _, _, _ -> false },
     onTextSelectionCleared: () -> Unit = {},
     onAnnotationClicked: (Int, Float, Float) -> Unit = { _, _, _ -> },
     annotations: List<com.infer.inferead.data.Annotation> = emptyList(),
@@ -1723,8 +1723,10 @@ fun EPUBReader(
                                             
                                             clearTimeout(selectionTimeout);
                                             selectionTimeout = setTimeout(function() {
-                                                Android.onSelectionFinished(text, rect.top, rect.bottom, cfi);
-                                                window.getSelection().removeAllRanges();
+                                                var consumed = Android.onSelectionFinished(text, rect.top, rect.bottom, cfi);
+                                                if (consumed) {
+                                                    window.getSelection().removeAllRanges();
+                                                }
                                             }, 600);
                                         } catch (e) {}
                                     }
