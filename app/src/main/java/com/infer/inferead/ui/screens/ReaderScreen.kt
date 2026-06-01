@@ -1385,29 +1385,35 @@ fun ReaderScreen(
                                         Text(previewText, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 5, overflow = TextOverflow.Ellipsis)
                                     }
                                 }
-                                // Bookmark dot indicator on top-right
-                                if (bookmarkedPages.contains(index + 1)) {
-                                    Box(
+                                val hasBookmark = bookmarkedPages.contains(index + 1)
+                                val pageAnns by remember(currentFile) { viewModel.getAnnotationsForFile(currentFile!!.id) }.collectAsState(initial = emptyList<com.infer.inferead.data.Annotation>())
+                                val hasComment = pageAnns.any { it.cfiRange == "${index + 1}|PAGE" }
+
+                                if (hasBookmark || hasComment) {
+                                    Row(
                                         modifier = Modifier
                                             .align(Alignment.TopEnd)
-                                            .padding(5.dp)
-                                            .size(14.dp)
-                                            .background(Color(0xFFFFC107), CircleShape)
-                                            .border(1.5.dp, Color.White.copy(alpha = 0.8f), CircleShape)
-                                    )
-                                }
-                                // Comment dot indicator on top-left
-                                val pageAnns by remember(currentFile) { viewModel.getAnnotationsForFile(currentFile!!.id) }.collectAsState(initial = emptyList<com.infer.inferead.data.Annotation>())
-                                if (pageAnns.any { it.cfiRange == "${index + 1}|PAGE" }) {
-                                    Icon(
-                                        imageVector = Icons.Default.Comment,
-                                        contentDescription = "Has Comment",
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier
-                                            .align(Alignment.TopStart)
-                                            .padding(4.dp)
-                                            .size(16.dp)
-                                    )
+                                            .padding(5.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        if (hasComment) {
+                                            Icon(
+                                                imageVector = Icons.Default.Comment,
+                                                contentDescription = "Has Comment",
+                                                tint = Color(0xFFB39DDB),
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                        if (hasBookmark) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(14.dp)
+                                                    .background(Color(0xFFFFC107), CircleShape)
+                                                    .border(1.5.dp, Color.White.copy(alpha = 0.8f), CircleShape)
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -1489,7 +1495,7 @@ fun ReaderScreen(
                                     val fraction = (pageIndex - 1).toFloat() / (currentFile!!.totalPages - 1).toFloat()
                                     val cx = trackStart + fraction * trackWidth
                                     drawCircle(
-                                        color = Color(0xFF64B5F6),
+                                        color = Color(0xFFB39DDB),
                                         radius = 4.dp.toPx(),
                                         center = Offset(cx, cy - 12.dp.toPx())
                                     )

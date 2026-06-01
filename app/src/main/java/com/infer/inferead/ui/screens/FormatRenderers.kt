@@ -240,8 +240,7 @@ fun PdfViewer(
 
         androidx.compose.foundation.pager.HorizontalPager(
             state = pagerState,
-            modifier = Modifier.fillMaxSize(),
-            userScrollEnabled = !isZoomed
+            modifier = Modifier.fillMaxSize()
         ) { page ->
             var scale by remember { mutableFloatStateOf(1f) }
             var offset by remember { mutableStateOf(Offset.Zero) }
@@ -1188,7 +1187,7 @@ fun ComicArchiveViewer(
                 }
             }
             var isZoomed by remember { mutableStateOf(false) }
-            androidx.compose.foundation.pager.HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize(), userScrollEnabled = !isZoomed) { page ->
+            androidx.compose.foundation.pager.HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
                 var scale by remember { mutableFloatStateOf(1f) }
                 var offset by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
                 
@@ -1263,7 +1262,7 @@ fun ComicArchiveViewer(
             }
             var isZoomed by remember { mutableStateOf(false) }
             // No flingBehavior override = default free scroll, no page snapping
-            LazyColumn(state = listState, modifier = Modifier.fillMaxSize(), userScrollEnabled = !isZoomed) {
+            LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
                 items(images) { image ->
                     var scale by remember { mutableFloatStateOf(1f) }
                     var offset by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
@@ -1730,6 +1729,7 @@ fun EPUBReader(
                                             clearTimeout(selectionTimeout);
                                             selectionTimeout = setTimeout(function() {
                                                 Android.onSelectionFinished(text, rect.top, rect.bottom, cfi);
+                                                window.getSelection().removeAllRanges();
                                             }, 600);
                                         } catch (e) {}
                                     }
