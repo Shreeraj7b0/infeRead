@@ -237,6 +237,7 @@ fun ReaderScreen(
     var showSettingsSheet by remember { mutableStateOf(false) }
     var chapterPreviews by remember { mutableStateOf<List<String>?>(null) }
     var targetScrollAnnId by remember { mutableStateOf<Int?>(null) }
+    var showPageAnnotationManager by remember { mutableStateOf(false) }
     var showScrubber by remember { mutableStateOf(false) }
     var showPageCommentsDialog by remember { mutableStateOf(false) }
     var isTitleExpanded by remember { mutableStateOf(false) }
@@ -680,15 +681,17 @@ fun ReaderScreen(
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                     modifier = Modifier.padding(bottom = 16.dp, end = 16.dp)
                 ) {
-                    val annotations by viewModel.getAnnotationsForFile(fileId).collectAsState(initial = emptyList<com.infer.inferead.data.Annotation>())
-                    val pageComments = remember(annotations, currentFile?.currentPage) {
-                        val chp = currentFile?.currentPage?.toString() ?: "-1"
-                        annotations.filter { (it.cfiRange.startsWith("$chp|") && it.colorHex == "") || it.cfiRange == "$chp|PAGE" }
+                    val allAnns by viewModel.getAnnotationsForFile(fileId).collectAsState(initial = emptyList<com.infer.inferead.data.Annotation>())
+                    val pageAnns by androidx.compose.runtime.remember(allAnns, currentFile?.currentPage, currentFile?.format) {
+                        androidx.compose.runtime.derivedStateOf {
+                            val index = currentFile?.currentPage ?: 0
+                            allAnns.filter { it.cfiRange.startsWith("${index}|") || it.cfiRange == "${index}|PAGE" }
+                        }
                     }
 
-                    if (annotations.isNotEmpty()) {
+                    if (pageAnns.isNotEmpty()) {
                         FloatingActionButton(
-                            onClick = { viewModel.setShowAnnotationManager(true) },
+                            onClick = { showPageAnnotationManager = true },
                             containerColor = barColor,
                             contentColor = if (settings.contrastMode == ContrastMode.Dark) Color(0xFF9AB0E6) else MaterialTheme.colorScheme.primary,
                             shape = CircleShape
@@ -2092,9 +2095,11 @@ fun ReaderScreen(
     }
 
     val showAnnotationManager by viewModel.showAnnotationManager.collectAsState()
+    val allAnns by viewModel.getAnnotationsForFile(fileId).collectAsState(initial = emptyList<com.infer.inferead.data.Annotation>())
     if (showAnnotationManager && currentFile != null) {
         AnnotationManagerDialog(
             file = currentFile!!,
+            annotations = allAnns,
             viewModel = viewModel,
             onNavigate = { ann ->
                 viewModel.setShowAnnotationManager(false)
@@ -2115,6 +2120,23 @@ fun ReaderScreen(
                 }
             },
             onDismiss = { viewModel.setShowAnnotationManager(false) }
+        )
+    }
+
+    if (showPageAnnotationManager && currentFile != null) {
+        val pageAnns = allAnns.filter { ann ->
+            val index = currentFile!!.currentPage
+            ann.cfiRange.startsWith("${index}|") || ann.cfiRange == "${index}|PAGE"
+        }
+        AnnotationManagerDialog(
+            file = currentFile!!,
+            annotations = pageAnns,
+            viewModel = viewModel,
+            onNavigate = { ann ->
+                showPageAnnotationManager = false
+                targetScrollAnnId = ann.id
+            },
+            onDismiss = { showPageAnnotationManager = false }
         )
     }
 

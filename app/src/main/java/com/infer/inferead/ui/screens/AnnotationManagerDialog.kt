@@ -26,12 +26,11 @@ import java.util.Locale
 @Composable
 fun AnnotationManagerDialog(
     file: LibraryFile,
+    annotations: List<Annotation>,
     viewModel: ReaderViewModel,
     onNavigate: (Annotation) -> Unit,
     onDismiss: () -> Unit
 ) {
-    val annotations by viewModel.getAnnotationsForFile(file.id).collectAsState(initial = emptyList())
-    
     var selectedTab by remember { mutableStateOf(0) }
     val tabs = listOf("Highlights", "Comments")
     

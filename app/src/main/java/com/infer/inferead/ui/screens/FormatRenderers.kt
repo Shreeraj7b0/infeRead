@@ -96,16 +96,16 @@ fun Modifier.zoomable(
                 val pan = event.calculatePan()
                 val centroid = event.calculateCentroid(useCurrent = false)
                 val newScale = (scale * zoom).coerceIn(1f, 5f)
-                val isZoomed = newScale > 1.05f
+                val isZoomed = newScale > 1.01f
                 val pivot = androidx.compose.ui.geometry.Offset(size.width / 2f, size.height / 2f)
                 val d = centroid - pivot
                 val newOffset = offset + pan - d * (newScale / scale - 1f)
                 val maxX = (size.width * (newScale - 1f)) / 2f
                 val maxY = (size.height * (newScale - 1f)) / 2f
-                val clampedOffset = if (newScale <= 1.05f) androidx.compose.ui.geometry.Offset.Zero else androidx.compose.ui.geometry.Offset(newOffset.x.coerceIn(-maxX, maxX), newOffset.y.coerceIn(-maxY, maxY))
-                onTransform(if (newScale <= 1.05f) 1f else newScale, clampedOffset, isZoomed)
+                val clampedOffset = if (newScale <= 1.0f) androidx.compose.ui.geometry.Offset.Zero else androidx.compose.ui.geometry.Offset(newOffset.x.coerceIn(-maxX, maxX), newOffset.y.coerceIn(-maxY, maxY))
+                onTransform(newScale, clampedOffset, isZoomed)
                 event.changes.forEach { it.consume() }
-            } else if (scale > 1.05f && pointers == 1) {
+            } else if (scale > 1.01f && pointers == 1) {
                 val pan = event.calculatePan()
                 val newOffset = offset + pan
                 val maxX = (size.width * (scale - 1f)) / 2f
@@ -1712,10 +1712,12 @@ fun EPUBReader(
                                 } catch(e) { return ""; }
                             }
 
+                            var selectionTimeout = null;
                             document.addEventListener('selectionchange', function() {
                                 var sel = window.getSelection();
                                 if (!sel || sel.isCollapsed) {
                                     Android.onTextSelectionCleared();
+                                    clearTimeout(selectionTimeout);
                                 } else {
                                     var text = sel.toString();
                                     if (text.length > 0) {
@@ -1724,28 +1726,15 @@ fun EPUBReader(
                                             var rect = range.getBoundingClientRect();
                                             var cfi = getRangeOffsets(range);
                                             Android.onTextSelected(text, rect.top, rect.bottom, cfi);
+                                            
+                                            clearTimeout(selectionTimeout);
+                                            selectionTimeout = setTimeout(function() {
+                                                Android.onSelectionFinished(text, rect.top, rect.bottom, cfi);
+                                            }, 600);
                                         } catch (e) {}
                                     }
                                 }
                             });
-                            
-                            function notifySelectionFinished() {
-                                var sel = window.getSelection();
-                                if (sel && !sel.isCollapsed) {
-                                    try {
-                                        var range = sel.getRangeAt(0);
-                                        var rect = range.getBoundingClientRect();
-                                        var text = sel.toString();
-                                        var cfi = getRangeOffsets(range);
-                                        Android.onSelectionFinished(text, rect.top, rect.bottom, cfi);
-                                    } catch(e) {}
-                                }
-                            }
-                            document.addEventListener('mouseup', notifySelectionFinished);
-                            document.addEventListener('touchend', function(e) {
-                                // Small delay so the selection is committed before we read it
-                                setTimeout(notifySelectionFinished, 100);
-                            }, {passive: true});
                             
                             // Render annotations
                             window.renderAnnotations = function(annotationsStr) {
@@ -1897,16 +1886,21 @@ fun EPUBReader(
                                 ), "Android")
                                 webViewClient = object : android.webkit.WebViewClient() {
                                     override fun onPageFinished(view: android.webkit.WebView?, url: String?) {
-                                        val anns = (view?.tag as? String) ?: ""
+                                        val tagData = view?.tag as? Pair<*, *>
+                                        val anns = (tagData?.first as? String) ?: ""
+                                        val targetId = tagData?.second as? Int
                                         view?.evaluateJavascript(js, null)
                                         view?.evaluateJavascript("if(window.renderAnnotations) { window.renderAnnotations('${anns.replace("'", "\\'")}'); }", null)
+                                        if (targetId != null) {
+                                            view?.evaluateJavascript("javascript:scrollToAnnotation($targetId);", null)
+                                        }
                                     }
                                 }
                                 setBackgroundColor(android.graphics.Color.TRANSPARENT)
                             }
                         },
                         update = { webView ->
-                            webView.tag = annotationsJson
+                            webView.tag = Pair(annotationsJson, targetScrollAnnId)
                             val currentUrl = webView.url
                             if (currentUrl != htmlUrl) {
                                 webView.loadUrl(htmlUrl)
