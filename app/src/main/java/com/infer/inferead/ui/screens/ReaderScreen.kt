@@ -777,7 +777,7 @@ fun ReaderScreen(
                             editingAnnotation = com.infer.inferead.data.Annotation(
                                 fileId = file.id,
                                 selectedText = "Page ${file.currentPage}",
-                                cfiRange = "${file.currentPage}|0,0",
+                                cfiRange = "${file.currentPage}|PAGE",
                                 colorHex = "",
                                 timestamp = System.currentTimeMillis()
                             )

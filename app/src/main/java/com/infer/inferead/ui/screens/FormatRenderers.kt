@@ -98,7 +98,7 @@ fun Modifier.zoomable(
                 val isZoomed = scale > 1.01f
                 val size = this.size
                 val pivot = androidx.compose.ui.geometry.Offset(size.width / 2f, size.height / 2f)
-                val d = centroid - pivot
+                val d = centroid - pivot - offset
                 offset = offset + pan - d * (zoom - 1f)
                 val maxX = (size.width * (scale - 1f)) / 2f
                 val maxY = (size.height * (scale - 1f)) / 2f
@@ -161,17 +161,26 @@ fun PdfViewer(
     }
 
     val parcelFileDescriptor = remember {
-        ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
+        try { ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY) } catch (e: Exception) { null }
     }
-    val pdfRenderer = remember { PdfRenderer(parcelFileDescriptor) }
+    val pdfRenderer = remember {
+        parcelFileDescriptor?.let {
+            try { PdfRenderer(it) } catch (e: Exception) { null }
+        }
+    }
+    if (pdfRenderer == null) {
+        Text("Cannot open PDF. It may be corrupted or password protected.")
+        return
+    }
+
     val mutex = remember { Mutex() }
     val bitmapCache = remember { android.util.LruCache<Int, Bitmap>(6) }
     val scope = rememberCoroutineScope()
 
     DisposableEffect(Unit) {
         onDispose {
-            pdfRenderer.close()
-            parcelFileDescriptor.close()
+            try { pdfRenderer.close() } catch (e: Exception) {}
+            try { parcelFileDescriptor?.close() } catch (e: Exception) {}
         }
     }
 
@@ -202,14 +211,20 @@ fun PdfViewer(
                 var page: PdfRenderer.Page? = null
                 try {
                     page = pdfRenderer.openPage(index)
-                    val renderWidth = (page.width * density * 1.5f).toInt()
-                    val renderHeight = (page.height * density * 1.5f).toInt()
-                    val bmp = Bitmap.createBitmap(renderWidth, renderHeight, Bitmap.Config.ARGB_8888)
+                    var renderWidth = (page.width * density * 1.5f)
+                    var renderHeight = (page.height * density * 1.5f)
+                    val maxDim = 2048f
+                    if (renderWidth > maxDim || renderHeight > maxDim) {
+                        val scale = maxDim / maxOf(renderWidth, renderHeight)
+                        renderWidth *= scale
+                        renderHeight *= scale
+                    }
+                    val bmp = Bitmap.createBitmap(renderWidth.toInt(), renderHeight.toInt(), Bitmap.Config.ARGB_8888)
                     bmp.eraseColor(android.graphics.Color.WHITE)
                     page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
                     bitmapCache.put(index, bmp)
                     bmp
-                } catch (e: Exception) { null }
+                } catch (e: Throwable) { null }
                 finally { try { page?.close() } catch (e: Exception) {} }
             }
         }
