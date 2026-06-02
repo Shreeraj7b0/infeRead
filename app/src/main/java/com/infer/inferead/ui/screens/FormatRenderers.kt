@@ -5,6 +5,16 @@ import com.infer.inferead.viewmodel.ContrastMode
 import com.infer.inferead.viewmodel.ReaderSettings
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.em
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.padding
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 import android.graphics.Bitmap
 import android.graphics.pdf.PdfRenderer
@@ -32,6 +42,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.material.icons.filled.Comment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.em
@@ -80,42 +91,106 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 
+import androidx.compose.ui.composed
+import kotlinx.coroutines.launch
+
 fun Modifier.zoomable(
     onTransform: (Float, androidx.compose.ui.geometry.Offset, Boolean) -> Unit
-) = this.pointerInput(Unit) {
-    var scale = 1f
-    var offset = androidx.compose.ui.geometry.Offset.Zero
-    awaitEachGesture {
-        awaitFirstDown(requireUnconsumed = false)
-        do {
-            val event = awaitPointerEvent()
-            val pointers = event.changes.size
-            if (pointers > 1) {
-                val zoom = event.calculateZoom()
-                val pan = event.calculatePan()
-                val centroid = event.calculateCentroid(useCurrent = false)
-                scale = (scale * zoom).coerceIn(1f, 5f)
-                val isZoomed = scale > 1.01f
-                val size = this.size
-                val pivot = androidx.compose.ui.geometry.Offset(size.width / 2f, size.height / 2f)
-                val d = centroid - pivot - offset
-                offset = offset + pan - d * (zoom - 1f)
-                val maxX = (size.width * (scale - 1f)) / 2f
-                val maxY = (size.height * (scale - 1f)) / 2f
-                offset = if (scale <= 1.0f) androidx.compose.ui.geometry.Offset.Zero else androidx.compose.ui.geometry.Offset(offset.x.coerceIn(-maxX, maxX), offset.y.coerceIn(-maxY, maxY))
-                onTransform(scale, offset, isZoomed)
-                event.changes.forEach { it.consume() }
-            } else if (scale > 1.01f && pointers == 1) {
-                val pan = event.calculatePan()
-                offset = offset + pan
-                val size = this.size
-                val maxX = (size.width * (scale - 1f)) / 2f
-                val maxY = (size.height * (scale - 1f)) / 2f
-                offset = androidx.compose.ui.geometry.Offset(offset.x.coerceIn(-maxX, maxX), offset.y.coerceIn(-maxY, maxY))
-                onTransform(scale, offset, true)
-                event.changes.forEach { it.consume() }
+) = composed {
+    val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
+    val animX = androidx.compose.runtime.remember { androidx.compose.animation.core.Animatable(0f) }
+    val animY = androidx.compose.runtime.remember { androidx.compose.animation.core.Animatable(0f) }
+    var scale by androidx.compose.runtime.remember { androidx.compose.runtime.mutableFloatStateOf(1f) }
+
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        androidx.compose.runtime.snapshotFlow { 
+            androidx.compose.ui.geometry.Offset(animX.value, animY.value) 
+        }.collect { offset ->
+            if (animX.isRunning || animY.isRunning) {
+                onTransform(scale, offset, scale > 1.01f)
             }
-        } while (event.changes.any { it.pressed })
+        }
+    }
+
+    this.pointerInput(Unit) {
+        awaitEachGesture {
+            awaitFirstDown(requireUnconsumed = false)
+            coroutineScope.launch { 
+                animX.stop()
+                animY.stop() 
+            }
+            val velocityTracker = androidx.compose.ui.input.pointer.util.VelocityTracker()
+            do {
+                val event = awaitPointerEvent()
+                val pointers = event.changes.size
+                
+                if (pointers > 1) {
+                    val zoom = event.calculateZoom()
+                    val pan = event.calculatePan()
+                    val centroid = event.calculateCentroid(useCurrent = false)
+                    scale = (scale * zoom).coerceIn(1f, 5f)
+                    val isZoomed = scale > 1.01f
+                    val size = this.size
+                    val pivot = androidx.compose.ui.geometry.Offset(size.width / 2f, size.height / 2f)
+                    val dX = centroid.x - pivot.x - animX.value
+                    val dY = centroid.y - pivot.y - animY.value
+                    
+                    var newX = animX.value + pan.x - dX * (zoom - 1f)
+                    var newY = animY.value + pan.y - dY * (zoom - 1f)
+                    
+                    val maxX = (size.width * (scale - 1f)) / 2f
+                    val maxY = (size.height * (scale - 1f)) / 2f
+                    
+                    if (scale <= 1.0f) {
+                        newX = 0f
+                        newY = 0f
+                    } else {
+                        newX = newX.coerceIn(-maxX, maxX)
+                        newY = newY.coerceIn(-maxY, maxY)
+                    }
+                    
+                    coroutineScope.launch {
+                        animX.snapTo(newX)
+                        animY.snapTo(newY)
+                        animX.updateBounds(-maxX, maxX)
+                        animY.updateBounds(-maxY, maxY)
+                    }
+                    onTransform(scale, androidx.compose.ui.geometry.Offset(newX, newY), isZoomed)
+                    event.changes.forEach { it.consume() }
+                } else if (scale > 1.01f && pointers == 1) {
+                    val change = event.changes.first()
+                    velocityTracker.addPosition(change.uptimeMillis, change.position)
+                    val pan = event.calculatePan()
+                    
+                    val size = this.size
+                    val maxX = (size.width * (scale - 1f)) / 2f
+                    val maxY = (size.height * (scale - 1f)) / 2f
+                    
+                    val newX = (animX.value + pan.x).coerceIn(-maxX, maxX)
+                    val newY = (animY.value + pan.y).coerceIn(-maxY, maxY)
+                    
+                    coroutineScope.launch {
+                        animX.snapTo(newX)
+                        animY.snapTo(newY)
+                        animX.updateBounds(-maxX, maxX)
+                        animY.updateBounds(-maxY, maxY)
+                    }
+                    onTransform(scale, androidx.compose.ui.geometry.Offset(newX, newY), true)
+                    event.changes.forEach { it.consume() }
+                }
+            } while (event.changes.any { it.pressed })
+            
+            if (scale > 1.01f) {
+                val velocity = velocityTracker.calculateVelocity()
+                val decay = androidx.compose.animation.splineBasedDecay<Float>(this@pointerInput)
+                if (velocity.x != 0f) {
+                    coroutineScope.launch { animX.animateDecay(velocity.x, decay) }
+                }
+                if (velocity.y != 0f) {
+                    coroutineScope.launch { animY.animateDecay(velocity.y, decay) }
+                }
+            }
+        }
     }
 }
 
@@ -149,6 +224,7 @@ fun PdfViewer(
     isWarmFilterActive: Boolean = false,
     isHorizontalScroll: Boolean = false,
     isReaderModeActive: Boolean = false,
+    isNegative: Boolean = false,
     currentPage: Int = 1,
     onPageChanged: (Int) -> Unit = {},
     onTotalPages: (Int) -> Unit = {},
@@ -191,16 +267,27 @@ fun PdfViewer(
     // Helper: build color filter for a page bitmap
     @Composable
     fun pageColorFilter(): ColorFilter? {
-        return remember(contrastMode, isWarmFilterActive) {
-            val baseMatrix = when (contrastMode) {
+        return remember(contrastMode, isWarmFilterActive, isNegative) {
+            var matrix = when (contrastMode) {
                 ContrastMode.Dark, ContrastMode.HighContrastDark -> ColorMatrix(floatArrayOf(-1f,0f,0f,0f,255f, 0f,-1f,0f,0f,255f, 0f,0f,-1f,0f,255f, 0f,0f,0f,1f,0f))
                 ContrastMode.HighContrastLight -> { val c=1.4f; val t=(-0.5f*c+0.5f)*255f; ColorMatrix(floatArrayOf(c,0f,0f,0f,t, 0f,c,0f,0f,t, 0f,0f,c,0f,t, 0f,0f,0f,1f,0f)) }
                 ContrastMode.EInk -> { val c=2f; val t=(-0.5f*c+0.5f)*255f; ColorMatrix(floatArrayOf(0.213f*c,0.715f*c,0.072f*c,0f,t, 0.213f*c,0.715f*c,0.072f*c,0f,t, 0.213f*c,0.715f*c,0.072f*c,0f,t, 0f,0f,0f,1f,0f)) }
                 else -> null
             }
-            val warmMatrix = if (isWarmFilterActive && contrastMode != ContrastMode.EInk) ColorMatrix(floatArrayOf(0.957f,0f,0f,0f,0f, 0f,0.925f,0f,0f,0f, 0f,0f,0.847f,0f,0f, 0f,0f,0f,1f,0f)) else null
-            val finalMatrix = if (baseMatrix != null && warmMatrix != null) concatColorMatrices(warmMatrix, baseMatrix) else baseMatrix ?: warmMatrix
-            finalMatrix?.let { ColorFilter.colorMatrix(it) }
+            if (isNegative) {
+                val negMatrix = ColorMatrix(floatArrayOf(
+                    -1f, 0f,  0f,  0f, 255f,
+                    0f,  -1f, 0f,  0f, 255f,
+                    0f,  0f,  -1f, 0f, 255f,
+                    0f,  0f,  0f,  1f, 0f
+                ))
+                matrix = if (matrix != null) concatColorMatrices(negMatrix, matrix) else negMatrix
+            }
+            if (isWarmFilterActive && contrastMode != ContrastMode.EInk) {
+                val warmMatrix = ColorMatrix(floatArrayOf(0.957f,0f,0f,0f,0f, 0f,0.925f,0f,0f,0f, 0f,0f,0.847f,0f,0f, 0f,0f,0f,1f,0f))
+                matrix = if (matrix != null) concatColorMatrices(warmMatrix, matrix) else warmMatrix
+            }
+            matrix?.let { ColorFilter.colorMatrix(it) }
         }
     }
 
@@ -396,7 +483,7 @@ fun PdfViewer(
                     )
             ) {
                 androidx.compose.material3.FloatingActionButton(
-                    onClick = { coroutineScope.launch { listState.animateScrollToItem(0) } },
+                    onClick = { coroutineScope.launch { listState.scrollToItem(0) } },
                     shape = androidx.compose.foundation.shape.CircleShape,
                     modifier = Modifier.size(40.dp),
                     containerColor = MaterialTheme.colorScheme.secondaryContainer,
@@ -460,473 +547,352 @@ fun segmentTextIntoPages(text: String, pageSize: Int = 1500): List<String> {
 }
 
 @Composable
-fun TextViewer(
+fun TXTReader(
     filePath: String,
-    settings: ReaderSettings = ReaderSettings(),
-    isReaderModeActive: Boolean = false,
-    currentPage: Int = 1,
-    scrollState: androidx.compose.foundation.ScrollState = androidx.compose.foundation.rememberScrollState(),
-    onPageChanged: (Int) -> Unit = {},
-    onTotalPages: (Int) -> Unit = {},
+    format: String = "TXT",
+    settings: com.infer.inferead.viewmodel.ReaderSettings,
+    chapterIndex: Int,
+    onPageChanged: (Int) -> Unit,
+    onTotalPagesLoaded: (Int, List<String>?) -> Unit,
     onTap: () -> Unit = {},
-    activeHighlightColor: String? = null,
-    onTextSelected: (String, String) -> Unit = { _, _ -> },
-    annotations: List<com.infer.inferead.data.Annotation> = emptyList()
+    onTextSelected: (String, Float, Float, String) -> Unit = { _, _, _, _ -> },
+    onSelectionFinished: (String, Float, Float, String) -> Boolean = { _, _, _, _ -> false },
+    onTextSelectionCleared: () -> Unit = {},
+    onAnnotationClicked: (Int, Float, Float) -> Unit = { _, _, _ -> },
+    targetVerticalProgress: Float? = null,
+    onScrollProgress: (Float) -> Unit = {}
 ) {
-    var fontScale by remember { mutableFloatStateOf(1f) }
-    var isZooming by remember { mutableStateOf(false) }
-    var textContent by remember { mutableStateOf("Loading text...") }
-    
-    val file = File(filePath)
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var loadedText by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
+    var isLoading by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(true) }
+    var errorMessage by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
 
-    val pages = remember(textContent) {
-        segmentTextIntoPages(textContent)
-    }
-    
-    val horizontalListState = rememberLazyListState()
-    
-    LaunchedEffect(pages.size, settings.isHorizontalScroll) {
-        if (settings.isHorizontalScroll && pages.isNotEmpty()) {
-            onTotalPages(pages.size)
-        } else {
-            onTotalPages(0)
-        }
-    }
-    
-    val firstVisibleItem by remember { derivedStateOf { horizontalListState.firstVisibleItemIndex } }
-    LaunchedEffect(firstVisibleItem, settings.isHorizontalScroll) {
-        if (settings.isHorizontalScroll && pages.isNotEmpty()) {
-            onPageChanged(firstVisibleItem + 1)
-        }
-    }
-    
-    var lastTargetPage by remember { mutableIntStateOf(-1) }
-    LaunchedEffect(currentPage, pages.size, settings.isHorizontalScroll) {
-        if (settings.isHorizontalScroll && currentPage > 0 && currentPage <= pages.size && !horizontalListState.isScrollInProgress && currentPage != horizontalListState.firstVisibleItemIndex + 1 && currentPage != lastTargetPage) {
-            lastTargetPage = currentPage
-            horizontalListState.scrollToItem(currentPage - 1)
-        }
-    }
+    val textScrollState = androidx.compose.foundation.rememberScrollState()
+    val horizontalScrollState = androidx.compose.foundation.rememberScrollState()
 
-    LaunchedEffect(scrollState.maxValue, settings.isHorizontalScroll) {
-        if (!settings.isHorizontalScroll && scrollState.maxValue > 0) {
-            onTotalPages(100)
-        }
-    }
-
-    val isScrollInProgress = scrollState.isScrollInProgress
-    LaunchedEffect(scrollState.value, settings.isHorizontalScroll, isScrollInProgress) {
-        // Disabled for LazyColumn
-    }
-
-    var lastTargetPageVertical by remember { mutableIntStateOf(-1) }
-    LaunchedEffect(currentPage, settings.isHorizontalScroll) {
-        // Handled by LazyColumn now
-    }
-
-    LaunchedEffect(filePath) {
-        withContext(Dispatchers.IO) {
+    androidx.compose.runtime.LaunchedEffect(filePath) {
+        isLoading = true
+        val file = java.io.File(filePath)
+        loadedText = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             if (file.exists()) {
                 val ext = file.extension.lowercase()
-                textContent = if (ext == "docx") {
+                if (ext == "docx") {
                     try {
                         val zip = java.util.zip.ZipFile(file)
                         val entry = zip.getEntry("word/document.xml")
                         if (entry != null) {
-                            val xml = zip.getInputStream(entry).reader().readText()
-                            xml.replace(Regex("</w:p>"), "\n").replace(Regex("<.*?>"), "")
+                            val parser = android.util.Xml.newPullParser()
+                            parser.setInput(zip.getInputStream(entry), "utf-8")
+                            val sb = java.lang.StringBuilder()
+                            var eventType = parser.eventType
+                            var isTextNode = false
+                            while (eventType != org.xmlpull.v1.XmlPullParser.END_DOCUMENT) {
+                                if (eventType == org.xmlpull.v1.XmlPullParser.START_TAG && (parser.name == "w:t" || parser.name == "t")) {
+                                    isTextNode = true
+                                } else if (eventType == org.xmlpull.v1.XmlPullParser.TEXT && isTextNode) {
+                                    sb.append(parser.text)
+                                } else if (eventType == org.xmlpull.v1.XmlPullParser.END_TAG) {
+                                    if (parser.name == "w:t" || parser.name == "t") {
+                                        isTextNode = false
+                                    } else if (parser.name == "w:p" || parser.name == "p") {
+                                        sb.append("\n")
+                                    }
+                                }
+                                eventType = parser.next()
+                            }
+                            sb.toString()
                         } else {
                             "Could not parse DOCX: word/document.xml not found."
                         }
                     } catch (e: Exception) {
+                        e.printStackTrace()
                         "Error parsing DOCX: ${e.message}"
                     }
                 } else if (ext == "doc") {
-                    "Legacy .doc format is not supported. Please convert to .docx or .txt."
+                    "DOC parsing not fully supported. Please convert to DOCX or TXT."
                 } else {
                     file.readText()
                 }
-            } else {
-                textContent = "File not found."
-            }
-        }
-    }
-
-    val backgroundColor = remember(settings.contrastMode, settings.isWarmFilterActive) {
-        when (settings.contrastMode) {
-            ContrastMode.Dark -> androidx.compose.ui.graphics.Color(0xFF1C1C1E)
-            ContrastMode.HighContrastDark -> androidx.compose.ui.graphics.Color(0xFF000000)
-            ContrastMode.HighContrastLight, ContrastMode.EInk -> androidx.compose.ui.graphics.Color(0xFFFFFFFF)
-            ContrastMode.Normal -> {
-                if (settings.isWarmFilterActive) {
-                    androidx.compose.ui.graphics.Color(0xFFF4ECD8)
-                } else {
-                    androidx.compose.ui.graphics.Color(0xFFFDFCF7)
-                }
-            }
-        }
-    }
-
-    val textColor = remember(settings.contrastMode, settings.isWarmFilterActive) {
-        when (settings.contrastMode) {
-            ContrastMode.Dark -> androidx.compose.ui.graphics.Color(0xFFE5E5EA)
-            ContrastMode.HighContrastDark -> androidx.compose.ui.graphics.Color(0xFFFFFFFF)
-            ContrastMode.HighContrastLight, ContrastMode.EInk -> androidx.compose.ui.graphics.Color(0xFF000000)
-            ContrastMode.Normal -> {
-                if (settings.isWarmFilterActive) {
-                    androidx.compose.ui.graphics.Color(0xFF5C4033)
-                } else {
-                    androidx.compose.ui.graphics.Color(0xFF1C1C1E)
-                }
-            }
-        }
-    }
-
-    val finalBgModifier = if (backgroundColor != androidx.compose.ui.graphics.Color.Unspecified) {
-        Modifier.background(backgroundColor)
-    } else {
-        Modifier
-    }
-
-    val finalTextColor = if (textColor != androidx.compose.ui.graphics.Color.Unspecified) {
-        textColor
-    } else {
-        MaterialTheme.colorScheme.onBackground
-    }
-
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val fontFamily = remember(settings.fontFamily, context) {
-        when (settings.fontFamily) {
-            "Serif", "Bookerly" -> androidx.compose.ui.text.font.FontFamily.Serif
-            "Monospace" -> androidx.compose.ui.text.font.FontFamily.Monospace
-            "Google Sans" -> androidx.compose.ui.text.font.FontFamily(androidx.compose.ui.text.font.Font(path = "fonts/google_sans.ttf", assetManager = context.assets))
-            "Literata" -> androidx.compose.ui.text.font.FontFamily(androidx.compose.ui.text.font.Font(path = "fonts/literata.ttf", assetManager = context.assets))
-            else -> androidx.compose.ui.text.font.FontFamily.SansSerif
-        }
-    }
-
-    val fontWeight = if (settings.contrastMode == ContrastMode.EInk) {
-        androidx.compose.ui.text.font.FontWeight.Black
-    } else if (settings.fontBold) {
-        androidx.compose.ui.text.font.FontWeight.Bold
-    } else {
-        androidx.compose.ui.text.font.FontWeight.Normal
-    }
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .then(finalBgModifier)
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null
-            ) {
-                onTap()
-            }
-            .pointerInput(Unit) {
-                awaitEachGesture {
-                    awaitFirstDown(requireUnconsumed = false)
-                    do {
-                        val event = awaitPointerEvent()
-                        val pointersCount = event.changes.size
-                        if (pointersCount > 1) {
-                            val zoomChange = event.calculateZoom()
-                            val oldScale = fontScale
-                            fontScale = (fontScale * zoomChange).coerceIn(0.5f, 6f)
-                            if (fontScale != oldScale) {
-                                isZooming = true
-                            }
-                            event.changes.forEach { it.consume() }
-                        }
-                    } while (event.changes.any { it.pressed })
-                }
-            }
-    ) {
-        if (settings.isHorizontalScroll) {
-            val snapFlingBehavior = rememberSnapFlingBehavior(lazyListState = horizontalListState)
-            LazyRow(
-                state = horizontalListState,
-                flingBehavior = snapFlingBehavior,
-                modifier = Modifier.fillMaxSize()
-            ) {
-                items(pages.size, key = { it }) { index ->
-                    Box(
-                        modifier = Modifier
-                            .fillParentMaxWidth()
-                            .fillParentMaxHeight()
-                            .padding(16.dp)
-                    ) {
-                        var textLayoutResult by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<androidx.compose.ui.text.TextLayoutResult?>(null) }
-                        var selectionStart by androidx.compose.runtime.remember { androidx.compose.runtime.mutableIntStateOf(-1) }
-                        var selectionEnd by androidx.compose.runtime.remember { androidx.compose.runtime.mutableIntStateOf(-1) }
-
-                        val annotatedText = androidx.compose.ui.text.buildAnnotatedString {
-                            append(pages[index])
-                            
-                            annotations.forEach { ann ->
-                                if (ann.cfiRange.startsWith("TXT_PAGE_${index}_")) {
-                                    val parts = ann.cfiRange.split("_")
-                                    if (parts.size >= 5) {
-                                        val min = parts[3].toIntOrNull() ?: return@forEach
-                                        val max = parts[4].toIntOrNull() ?: return@forEach
-                                        val colorInt = try { android.graphics.Color.parseColor(ann.colorHex) } catch (e: Exception) { android.graphics.Color.YELLOW }
-                                        addStyle(
-                                            style = androidx.compose.ui.text.SpanStyle(background = androidx.compose.ui.graphics.Color(colorInt).copy(alpha = 0.4f)),
-                                            start = min.coerceIn(0, pages[index].length),
-                                            end = max.coerceIn(0, pages[index].length)
-                                        )
-                                    }
-                                }
-                            }
-                            
-                            if (selectionStart != -1 && selectionEnd != -1 && selectionStart != selectionEnd) {
-                                val min = minOf(selectionStart, selectionEnd).coerceIn(0, pages[index].length)
-                                val max = maxOf(selectionStart, selectionEnd).coerceIn(0, pages[index].length)
-                                val colorInt = try { android.graphics.Color.parseColor(activeHighlightColor ?: "#c25d5d") } catch (e: Exception) { android.graphics.Color.RED }
-                                addStyle(
-                                    style = androidx.compose.ui.text.SpanStyle(background = androidx.compose.ui.graphics.Color(colorInt).copy(alpha = 0.4f)),
-                                    start = min,
-                                    end = max
-                                )
-                            }
-                        }
-
-                        androidx.compose.material3.Text(
-                            text = annotatedText,
-                            onTextLayout = { textLayoutResult = it },
-                            fontSize = (16 * fontScale * settings.fontSizeMultiplier).sp,
-                            color = finalTextColor,
-                            fontFamily = fontFamily,
-                            fontWeight = fontWeight,
-                            lineHeight = (24 * fontScale * settings.fontSizeMultiplier * settings.lineSpacingMultiplier).sp,
-                            letterSpacing = ((settings.wordSpacingMultiplier - 1.0f) * 0.1f).em,
-                            style = MaterialTheme.typography.bodyLarge,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .pointerInput(activeHighlightColor, annotations) {
-                                    if (!activeHighlightColor.isNullOrEmpty()) {
-                                        detectDragGestures(
-                                            onDragStart = { offset ->
-                                                textLayoutResult?.let { layout ->
-                                                    val pos = layout.getOffsetForPosition(offset).coerceIn(0, pages[index].length)
-                                                    selectionStart = pos
-                                                    selectionEnd = pos
-                                                }
-                                            },
-                                            onDragEnd = {
-                                                if (selectionStart != -1 && selectionEnd != -1 && selectionStart != selectionEnd) {
-                                                    val min = minOf(selectionStart, selectionEnd).coerceIn(0, pages[index].length)
-                                                    val max = maxOf(selectionStart, selectionEnd).coerceIn(0, pages[index].length)
-                                                    if (min < max) {
-                                                        val selectedText = pages[index].substring(min, max)
-                                                        val bounds = "TXT_PAGE_${index}_${min}_${max}"
-                                                        onTextSelected(selectedText, bounds)
-                                                    }
-                                                    selectionStart = -1
-                                                    selectionEnd = -1
-                                                }
-                                            }
-                                        ) { change, _ ->
-                                            textLayoutResult?.let { layout ->
-                                                selectionEnd = layout.getOffsetForPosition(change.position).coerceIn(0, pages[index].length)
-                                            }
-                                        }
-                                    } else {
-                                        // Tap to delete existing highlight
-                                        detectTapGestures(
-                                            onTap = { offset ->
-                                                textLayoutResult?.let { layout ->
-                                                    val pos = layout.getOffsetForPosition(offset).coerceIn(0, pages[index].length)
-                                                    annotations.forEach { ann ->
-                                                        if (ann.cfiRange.startsWith("TXT_PAGE_${index}_")) {
-                                                            val parts = ann.cfiRange.split("_")
-                                                            if (parts.size >= 5) {
-                                                                val min = parts[3].toIntOrNull() ?: return@forEach
-                                                                val max = parts[4].toIntOrNull() ?: return@forEach
-                                                                if (pos in min..max) {
-                                                                    // We could trigger a delete here, but passing it through onTextSelected is tricky.
-                                                                    // Let's pass a special bounds to delete
-                                                                    onTextSelected("DELETE", ann.id.toString())
-                                                                }
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                                onTap()
-                                            }
-                                        )
-                                    }
-                                }
-                        )
-                    }
-                }
-            }
-        } else {
-            val snapFlingBehavior = rememberSnapFlingBehavior(lazyListState = horizontalListState)
-            LazyColumn(
-                state = horizontalListState,
-                flingBehavior = snapFlingBehavior,
-                modifier = Modifier.fillMaxSize()
-            ) {
-                items(pages.size, key = { it }) { index ->
-                    Box(
-                        modifier = Modifier
-                            .fillParentMaxWidth()
-                            .fillParentMaxHeight()
-                            .padding(16.dp)
-                    ) {
-                        var textLayoutResult by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<androidx.compose.ui.text.TextLayoutResult?>(null) }
-                        var selectionStart by androidx.compose.runtime.remember { androidx.compose.runtime.mutableIntStateOf(-1) }
-                        var selectionEnd by androidx.compose.runtime.remember { androidx.compose.runtime.mutableIntStateOf(-1) }
-
-                        val annotatedText = androidx.compose.ui.text.buildAnnotatedString {
-                            append(pages[index])
-                            
-                            annotations.forEach { ann ->
-                                if (ann.cfiRange.startsWith("TXT_PAGE_${index}_")) {
-                                    val parts = ann.cfiRange.split("_")
-                                    if (parts.size >= 5) {
-                                        val min = parts[3].toIntOrNull() ?: return@forEach
-                                        val max = parts[4].toIntOrNull() ?: return@forEach
-                                        val colorInt = try { android.graphics.Color.parseColor(ann.colorHex) } catch (e: Exception) { android.graphics.Color.YELLOW }
-                                        addStyle(
-                                            style = androidx.compose.ui.text.SpanStyle(background = androidx.compose.ui.graphics.Color(colorInt).copy(alpha = 0.4f)),
-                                            start = min.coerceIn(0, pages[index].length),
-                                            end = max.coerceIn(0, pages[index].length)
-                                        )
-                                    }
-                                }
-                            }
-                            
-                            if (selectionStart != -1 && selectionEnd != -1 && selectionStart != selectionEnd) {
-                                val min = minOf(selectionStart, selectionEnd).coerceIn(0, pages[index].length)
-                                val max = maxOf(selectionStart, selectionEnd).coerceIn(0, pages[index].length)
-                                val colorInt = try { android.graphics.Color.parseColor(activeHighlightColor ?: "#c25d5d") } catch (e: Exception) { android.graphics.Color.RED }
-                                addStyle(
-                                    style = androidx.compose.ui.text.SpanStyle(background = androidx.compose.ui.graphics.Color(colorInt).copy(alpha = 0.4f)),
-                                    start = min,
-                                    end = max
-                                )
-                            }
-                        }
-
-                        androidx.compose.material3.Text(
-                            text = annotatedText,
-                            onTextLayout = { textLayoutResult = it },
-                            fontSize = (16 * fontScale * settings.fontSizeMultiplier).sp,
-                            color = finalTextColor,
-                            fontFamily = fontFamily,
-                            fontWeight = fontWeight,
-                            lineHeight = (24 * fontScale * settings.fontSizeMultiplier * settings.lineSpacingMultiplier).sp,
-                            letterSpacing = ((settings.wordSpacingMultiplier - 1.0f) * 0.1f).em,
-                            style = MaterialTheme.typography.bodyLarge,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .pointerInput(activeHighlightColor, annotations) {
-                                    if (!activeHighlightColor.isNullOrEmpty()) {
-                                        detectDragGestures(
-                                            onDragStart = { offset ->
-                                                textLayoutResult?.let { layout ->
-                                                    val pos = layout.getOffsetForPosition(offset).coerceIn(0, pages[index].length)
-                                                    selectionStart = pos
-                                                    selectionEnd = pos
-                                                }
-                                            },
-                                            onDragEnd = {
-                                                if (selectionStart != -1 && selectionEnd != -1 && selectionStart != selectionEnd) {
-                                                    val min = minOf(selectionStart, selectionEnd).coerceIn(0, pages[index].length)
-                                                    val max = maxOf(selectionStart, selectionEnd).coerceIn(0, pages[index].length)
-                                                    if (min < max) {
-                                                        val selectedText = pages[index].substring(min, max)
-                                                        val bounds = "TXT_PAGE_${index}_${min}_${max}"
-                                                        onTextSelected(selectedText, bounds)
-                                                    }
-                                                    selectionStart = -1
-                                                    selectionEnd = -1
-                                                }
-                                            }
-                                        ) { change, _ ->
-                                            textLayoutResult?.let { layout ->
-                                                selectionEnd = layout.getOffsetForPosition(change.position).coerceIn(0, pages[index].length)
-                                            }
-                                        }
-                                    } else {
-                                        // Tap to delete existing highlight
-                                        detectTapGestures(
-                                            onTap = { offset ->
-                                                textLayoutResult?.let { layout ->
-                                                    val pos = layout.getOffsetForPosition(offset).coerceIn(0, pages[index].length)
-                                                    annotations.forEach { ann ->
-                                                        if (ann.cfiRange.startsWith("TXT_PAGE_${index}_")) {
-                                                            val parts = ann.cfiRange.split("_")
-                                                            if (parts.size >= 5) {
-                                                                val min = parts[3].toIntOrNull() ?: return@forEach
-                                                                val max = parts[4].toIntOrNull() ?: return@forEach
-                                                                if (pos in min..max) {
-                                                                    // We could trigger a delete here, but passing it through onTextSelected is tricky.
-                                                                    // Let's pass a special bounds to delete
-                                                                    onTextSelected("DELETE", ann.id.toString())
-                                                                }
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                                onTap()
-                                            }
-                                        )
-                                    }
-                                }
-                        )
-                    }
-                }
-            }
-        }
-
-        // Zoom Indicator Overlay
-        if (isZooming) {
-            LaunchedEffect(fontScale) {
-                kotlinx.coroutines.delay(1000)
-                isZooming = false
-            }
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = androidx.compose.foundation.layout.WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 8.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f))
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-            ) {
-                Text(
-                    text = "Font Size: ${(fontScale * settings.fontSizeMultiplier * 100).roundToInt()}%",
-                    color = MaterialTheme.colorScheme.background,
-                    style = MaterialTheme.typography.labelLarge
-                )
-            }
+            } else null
         }
         
-        if (!settings.isHorizontalScroll) {
-            val coroutineScope = rememberCoroutineScope()
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+            if (loadedText == null) {
+                errorMessage = "Failed to load file."
+            }
+            isLoading = false
+        }
+    }
+
+    if (isLoading) {
+        androidx.compose.foundation.layout.Box(modifier = androidx.compose.ui.Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.Center) {
+            androidx.compose.material3.Text("Loading...", color = androidx.compose.material3.MaterialTheme.colorScheme.onBackground)
+        }
+    } else if (loadedText == null) {
+        androidx.compose.foundation.layout.Box(modifier = androidx.compose.ui.Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.Center) {
+            androidx.compose.material3.Text(errorMessage ?: "Failed to load file.", color = androidx.compose.material3.MaterialTheme.colorScheme.onBackground)
+        }
+    } else {
+        val bgColor = when (settings.contrastMode) {
+            com.infer.inferead.viewmodel.ContrastMode.Dark -> androidx.compose.ui.graphics.Color(0xFF1A1A1A)
+            com.infer.inferead.viewmodel.ContrastMode.HighContrastDark -> androidx.compose.ui.graphics.Color.Black
+            com.infer.inferead.viewmodel.ContrastMode.HighContrastLight -> androidx.compose.ui.graphics.Color.White
+            com.infer.inferead.viewmodel.ContrastMode.EInk -> androidx.compose.ui.graphics.Color(0xFFF0F0F0)
+            com.infer.inferead.viewmodel.ContrastMode.Normal -> if (settings.isWarmFilterActive) androidx.compose.ui.graphics.Color(0xFFF4ECD8) else androidx.compose.ui.graphics.Color(0xFFF5F5F5)
+        }
+        val textColor = when (settings.contrastMode) {
+            com.infer.inferead.viewmodel.ContrastMode.Dark -> androidx.compose.ui.graphics.Color.White
+            com.infer.inferead.viewmodel.ContrastMode.HighContrastDark -> androidx.compose.ui.graphics.Color.White
+            com.infer.inferead.viewmodel.ContrastMode.HighContrastLight, com.infer.inferead.viewmodel.ContrastMode.EInk -> androidx.compose.ui.graphics.Color.Black
+            com.infer.inferead.viewmodel.ContrastMode.Normal -> androidx.compose.ui.graphics.Color.Black
+        }
+        val tintColor = if (settings.isWarmFilterActive && settings.contrastMode == com.infer.inferead.viewmodel.ContrastMode.Normal) androidx.compose.ui.graphics.Color(0xFFF4ECD8) else bgColor
+        
+        val fontFamily = when (settings.fontFamily) {
+            "SansSerif" -> androidx.compose.ui.text.font.FontFamily.SansSerif
+            "Serif" -> androidx.compose.ui.text.font.FontFamily.Serif
+            "Monospace" -> androidx.compose.ui.text.font.FontFamily.Monospace
+            "Google Sans" -> androidx.compose.ui.text.font.FontFamily(androidx.compose.ui.text.font.Font("fonts/google_sans.ttf", context.assets))
+            "Literata" -> androidx.compose.ui.text.font.FontFamily(androidx.compose.ui.text.font.Font("fonts/literata.ttf", context.assets))
+            else -> androidx.compose.ui.text.font.FontFamily.SansSerif
+        }
+
+        @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+        androidx.compose.foundation.layout.Box(
+            modifier = androidx.compose.ui.Modifier.fillMaxSize().background(tintColor)
+        ) {
+            if (settings.isHorizontalScroll) {
+                var webViewRef by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<android.webkit.WebView?>(null) }
+                val htmlContent = """
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+                    <style>
+                        @font-face { font-family: 'Google Sans'; src: url('file:///android_asset/fonts/google_sans.ttf'); }
+                        @font-face { font-family: 'Literata'; src: url('file:///android_asset/fonts/literata.ttf'); }
+                        body {
+                            margin: 0;
+                            padding: 16px;
+                            padding-top: 60px;
+                            padding-bottom: 60px;
+                            box-sizing: border-box;
+                            width: 100vw;
+                            height: 100vh;
+                            column-width: calc(100vw - 32px);
+                            column-gap: 32px;
+                            overflow-y: hidden;
+                            overflow-x: hidden; /* We handle scroll via JS to snap */
+                            color: ${String.format("#%06X", 0xFFFFFF and textColor.toArgb())};
+                            font-family: ${
+                                when(settings.fontFamily) {
+                                    "Monospace" -> "monospace"
+                                    "Serif" -> "serif"
+                                    "SansSerif" -> "sans-serif"
+                                    "Google Sans" -> "\"Google Sans\", sans-serif"
+                                    "Literata" -> "\"Literata\", serif"
+                                    else -> "\"Google Sans\", sans-serif"
+                                }
+                            };
+                            font-size: ${16 * settings.fontSizeMultiplier}px;
+                            font-weight: ${if (settings.fontBold) "bold" else "normal"};
+                            line-height: ${1.6f * settings.lineSpacingMultiplier};
+                            letter-spacing: ${(settings.wordSpacingMultiplier - 1.0f) * 0.1f}em;
+                            word-wrap: break-word;
+                            white-space: pre-wrap;
+                        }
+                    </style>
+                    </head>
+                    <body>${loadedText!!.replace("<", "&lt;").replace(">", "&gt;")}</body>
+                    <script>
+                        function reportPages() {
+                            var totalPages = Math.ceil(document.body.scrollWidth / window.innerWidth);
+                            if (totalPages === 0) totalPages = 1;
+                            Android.reportTotalPages(totalPages);
+                        }
+                        window.onload = reportPages;
+                        window.addEventListener('resize', reportPages);
+                        
+                        var startX = 0;
+                        var scrollStartX = 0;
+                        var lastTapTime = 0;
+                        window.addEventListener('touchstart', function(e) {
+                            startX = e.touches[0].clientX;
+                            scrollStartX = window.scrollX;
+                        }, { passive: true });
+                        window.addEventListener('touchmove', function(e) {
+                            var deltaX = startX - e.touches[0].clientX;
+                            window.scrollTo(scrollStartX + deltaX, 0);
+                            e.preventDefault();
+                        }, { passive: false });
+                        window.addEventListener('touchend', function(e) {
+                            var currentTime = new Date().getTime();
+                            if (currentTime - lastTapTime < 300) {
+                                Android.triggerTap();
+                                lastTapTime = 0;
+                            } else {
+                                lastTapTime = currentTime;
+                            }
+                            var deltaX = startX - e.changedTouches[0].clientX;
+                            var page = Math.round(scrollStartX / window.innerWidth);
+                            if (deltaX > 40) page++;
+                            else if (deltaX < -40) page--;
+                            var maxPage = Math.ceil(document.body.scrollWidth / window.innerWidth) - 1;
+                            if (page < 0) page = 0;
+                            if (page > maxPage) page = maxPage;
+                            scrollToPage(page);
+                        }, { passive: true });
+
+                        function scrollToPage(pageIndex) {
+                            var targetX = pageIndex * window.innerWidth;
+                            var startX = window.scrollX;
+                            var distance = targetX - startX;
+                            var duration = 200; // snappy speed
+                            var start = null;
+
+                            function step(timestamp) {
+                                if (!start) start = timestamp;
+                                var progress = (timestamp - start) / duration;
+                                if (progress > 1) progress = 1;
+                                
+                                // Cubic ease-out
+                                var easeProgress = 1 - Math.pow(1 - progress, 3);
+                                window.scrollTo(startX + distance * easeProgress, 0);
+                                
+                                if (progress < 1) {
+                                    window.requestAnimationFrame(step);
+                                } else {
+                                    Android.reportCurrentPage(pageIndex + 1);
+                                }
+                            }
+                            window.requestAnimationFrame(step);
+                        }
+                    </script>
+                    </html>
+                """.trimIndent()
+
+                androidx.compose.ui.viewinterop.AndroidView(
+                    modifier = androidx.compose.ui.Modifier.fillMaxSize()
+                        .pointerInput(Unit) {
+                            detectTapGestures(onDoubleTap = { onTap() })
+                        },
+                    factory = { ctx ->
+                        android.webkit.WebView(ctx).apply {
+                            layoutParams = android.view.ViewGroup.LayoutParams(
+                                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                                android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                            )
+                            webViewRef = this
+                            this.settings.javaScriptEnabled = true
+                            setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                            isVerticalScrollBarEnabled = false
+                            isHorizontalScrollBarEnabled = false
+                            setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
+                            
+                            addJavascriptInterface(object {
+                                @android.webkit.JavascriptInterface
+                                fun reportTotalPages(total: Int) {
+                                    onTotalPagesLoaded(total, null)
+                                }
+                                @android.webkit.JavascriptInterface
+                                fun reportCurrentPage(page: Int) {
+                                    onPageChanged(page)
+                                }
+                                @android.webkit.JavascriptInterface
+                                fun triggerTap() {
+                                    onTap()
+                                }
+                            }, "Android")
+
+                            loadDataWithBaseURL("file:///android_asset/", htmlContent, "text/html", "UTF-8", null)
+                        }
+                    },
+                    update = { webView ->
+                        webViewRef = webView
+                        val textColorHex = String.format("#%06X", 0xFFFFFF and textColor.toArgb())
+                        val fontFam = when(settings.fontFamily) {
+                            "Monospace" -> "monospace"
+                            "Serif" -> "serif"
+                            "SansSerif" -> "sans-serif"
+                            "Google Sans" -> "\"Google Sans\", sans-serif"
+                            "Literata" -> "\"Literata\", serif"
+                            else -> "\"Google Sans\", sans-serif"
+                        }
+                        val js = """
+                            document.body.style.color = '$textColorHex';
+                            document.body.style.fontFamily = '$fontFam';
+                            document.body.style.fontSize = '${16 * settings.fontSizeMultiplier}px';
+                            document.body.style.fontWeight = '${if (settings.fontBold) "bold" else "normal"}';
+                            document.body.style.lineHeight = '${1.6f * settings.lineSpacingMultiplier}';
+                            document.body.style.letterSpacing = '${(settings.wordSpacingMultiplier - 1.0f) * 0.1f}em';
+                            reportPages();
+                        """.trimIndent()
+                        webView.evaluateJavascript(js, null)
+                    }
+                )
+                
+                androidx.compose.runtime.LaunchedEffect(chapterIndex) {
+                    webViewRef?.evaluateJavascript("scrollToPage(${chapterIndex - 1});", null)
+                }
+            } else {
+                androidx.compose.runtime.LaunchedEffect(settings.isHorizontalScroll, loadedText) {
+                    if (!settings.isHorizontalScroll && loadedText != null) {
+                        onTotalPagesLoaded(1, null)
+                        onPageChanged(1)
+                    }
+                }
+                
+                androidx.compose.runtime.LaunchedEffect(textScrollState.value, textScrollState.maxValue) {
+                    if (textScrollState.maxValue > 0) {
+                        onScrollProgress(textScrollState.value.toFloat() / textScrollState.maxValue.toFloat())
+                    }
+                }
+                
+                androidx.compose.runtime.LaunchedEffect(targetVerticalProgress) {
+                    if (targetVerticalProgress != null && textScrollState.maxValue > 0) {
+                        textScrollState.scrollTo((targetVerticalProgress * textScrollState.maxValue).toInt())
+                    }
+                }
+                
+                androidx.compose.foundation.layout.Box(
+                    modifier = androidx.compose.ui.Modifier.fillMaxSize()
+                        .pointerInput(Unit) {
+                            detectTapGestures(onDoubleTap = { onTap() })
+                        }
+                        .verticalScroll(textScrollState)
+                        .padding(start = 16.dp, top = 16.dp, bottom = 16.dp, end = 26.dp)
+                ) {
+                    androidx.compose.material3.Text(
+                        text = loadedText!!,
+                        color = textColor,
+                        fontSize = (16 * settings.fontSizeMultiplier).sp,
+                        fontFamily = fontFamily,
+                        fontWeight = if (settings.fontBold) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal,
+                        lineHeight = (16 * settings.fontSizeMultiplier * 1.6f * settings.lineSpacingMultiplier).sp,
+                        letterSpacing = ((settings.wordSpacingMultiplier - 1.0f) * 0.1f).em,
+                        modifier = androidx.compose.ui.Modifier.padding(top = 60.dp, bottom = 60.dp)
+                    )
+                }
+            }
+            
+            val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
             androidx.compose.animation.AnimatedVisibility(
-                visible = scrollState.isScrollInProgress || !isReaderModeActive,
-                enter = androidx.compose.animation.fadeIn(),
-                exit = androidx.compose.animation.fadeOut(),
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(top = androidx.compose.foundation.layout.WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 8.dp, end = 16.dp)
+                visible = textScrollState.isScrollInProgress && textScrollState.value > 0 && !settings.isHorizontalScroll,
+                enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.scaleIn(),
+                exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.scaleOut(),
+                modifier = androidx.compose.ui.Modifier.align(androidx.compose.ui.Alignment.TopEnd).padding(top = 70.dp, end = 16.dp)
             ) {
                 androidx.compose.material3.FloatingActionButton(
-                    onClick = {
-                        coroutineScope.launch { scrollState.animateScrollTo(0) }
-                    },
+                    onClick = { coroutineScope.launch { textScrollState.scrollTo(0) } },
                     shape = androidx.compose.foundation.shape.CircleShape,
-                    modifier = Modifier.size(40.dp),
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                    modifier = androidx.compose.ui.Modifier.size(40.dp),
+                    containerColor = androidx.compose.material3.MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = androidx.compose.material3.MaterialTheme.colorScheme.onSecondaryContainer
                 ) {
                     androidx.compose.material3.Icon(
                         imageVector = androidx.compose.material.icons.Icons.Default.KeyboardArrowUp,
-                        contentDescription = "Back to Top",
-                        modifier = Modifier.size(24.dp)
+                        contentDescription = "Move to Top",
+                        modifier = androidx.compose.ui.Modifier.size(24.dp)
                     )
                 }
             }
@@ -934,8 +900,12 @@ fun TextViewer(
     }
 }
 
+
+
+
+
 @Composable
-fun ImageViewer(filePath: String, isNoir: Boolean = false, isNegative: Boolean = false, onTap: () -> Unit = {}) {
+fun ImageViewer(filePath: String, isNoir: Boolean = false, isNegative: Boolean = false, vignetteStrength: Float = 0f, onTap: () -> Unit = {}) {
     var scale by remember { mutableFloatStateOf(1f) }
     var offset by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
     var size by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
@@ -994,6 +964,20 @@ fun ImageViewer(filePath: String, isNoir: Boolean = false, isNegative: Boolean =
             contentScale = ContentScale.Fit,
             colorFilter = colorFilter
         )
+        if (vignetteStrength != 0f) {
+            val vColor = if (vignetteStrength > 0) androidx.compose.ui.graphics.Color.Black else androidx.compose.ui.graphics.Color.White
+            val vAlpha = Math.abs(vignetteStrength)
+            androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
+                val radius = kotlin.math.max(size.width, size.height) / 1.2f
+                drawRect(
+                    brush = androidx.compose.ui.graphics.Brush.radialGradient(
+                        colors = listOf(androidx.compose.ui.graphics.Color.Transparent, vColor.copy(alpha = vAlpha)),
+                        center = androidx.compose.ui.geometry.Offset(size.width / 2f, size.height / 2f),
+                        radius = radius
+                    )
+                )
+            }
+        }
     }
 }
 
@@ -1177,6 +1161,30 @@ fun ComicArchiveViewer(
         isLoading = false
     }
 
+    val colorFilter = remember(settings.isNoir, settings.isNegative) {
+        when {
+            settings.isNoir -> {
+                val m = androidx.compose.ui.graphics.ColorMatrix(floatArrayOf(
+                    0.299f, 0.587f, 0.114f, 0f, 0f,
+                    0.299f, 0.587f, 0.114f, 0f, 0f,
+                    0.299f, 0.587f, 0.114f, 0f, 0f,
+                    0f,     0f,     0f,     1f, 0f
+                ))
+                androidx.compose.ui.graphics.ColorFilter.colorMatrix(m)
+            }
+            settings.isNegative -> {
+                val m = androidx.compose.ui.graphics.ColorMatrix(floatArrayOf(
+                    -1f, 0f,  0f,  0f, 255f,
+                    0f,  -1f, 0f,  0f, 255f,
+                    0f,  0f,  -1f, 0f, 255f,
+                    0f,  0f,  0f,  1f, 0f
+                ))
+                androidx.compose.ui.graphics.ColorFilter.colorMatrix(m)
+            }
+            else -> null
+        }
+    }
+
     if (isLoading) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text("Loading...", color = MaterialTheme.colorScheme.onBackground)
@@ -1207,51 +1215,70 @@ fun ComicArchiveViewer(
                 var scale by remember { mutableFloatStateOf(1f) }
                 var offset by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
                 
-                AsyncImage(
-                    model = images[page],
-                    contentDescription = "Page ${page + 1}",
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer(
-                            scaleX = scale,
-                            scaleY = scale,
-                            translationX = offset.x,
-                            translationY = offset.y
-                        )
-                        .zoomable { newScale, newOffset, zoomed ->
-                            scale = newScale
-                            offset = newOffset
-                            isZoomed = zoomed
-                        }
-                        .pointerInput(Unit) {
-                            detectTapGestures(
-                                onDoubleTap = { onTap() },
-                                onTap = { tapOffset ->
-                                    if (!isZoomed) {
-                                        val width = size.width
-                                        val height = size.height
-                                        if (tapOffset.y > height * 0.15f && tapOffset.y < height * 0.85f) {
-                                            if (tapOffset.x < width * 0.3f) {
-                                                scope.launch {
-                                                    if (pagerState.targetPage > 0) {
-                                                        pagerState.animateScrollToPage(pagerState.targetPage - 1)
-                                                    }
+                Box(modifier = Modifier
+                    .fillMaxSize()
+                    .zoomable { newScale, newOffset, zoomed ->
+                        scale = newScale
+                        offset = newOffset
+                        isZoomed = zoomed
+                    }
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onDoubleTap = { onTap() },
+                            onTap = { tapOffset ->
+                                if (!isZoomed) {
+                                    val width = size.width
+                                    val height = size.height
+                                    if (tapOffset.y > height * 0.15f && tapOffset.y < height * 0.85f) {
+                                        if (tapOffset.x < width * 0.3f) {
+                                            scope.launch {
+                                                if (pagerState.targetPage > 0) {
+                                                    pagerState.animateScrollToPage(pagerState.targetPage - 1)
                                                 }
-                                            } else if (tapOffset.x > width * 0.7f) {
-                                                scope.launch {
-                                                    if (pagerState.targetPage < images.size - 1) {
-                                                        pagerState.animateScrollToPage(pagerState.targetPage + 1)
-                                                    }
+                                            }
+                                        } else if (tapOffset.x > width * 0.7f) {
+                                            scope.launch {
+                                                if (pagerState.targetPage < images.size - 1) {
+                                                    pagerState.animateScrollToPage(pagerState.targetPage + 1)
                                                 }
                                             }
                                         }
                                     }
                                 }
-                            )
-                        },
-                    contentScale = ContentScale.Fit
+                            }
+                        )
+                    }
+                ) {
+                    AsyncImage(
+                        model = images[page],
+                        contentDescription = "Page ${page + 1}",
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer(
+                                scaleX = scale,
+                                scaleY = scale,
+                                translationX = offset.x,
+                                translationY = offset.y
+                            ),
+                    contentScale = ContentScale.Fit,
+                    colorFilter = colorFilter
                 )
+                if (settings.vignetteStrength != 0f) {
+                    val vColor = if (settings.vignetteStrength > 0) androidx.compose.ui.graphics.Color.Black else androidx.compose.ui.graphics.Color.White
+                    val vAlpha = Math.abs(settings.vignetteStrength)
+                    androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
+                        val radius = kotlin.math.max(size.width, size.height) / 1.2f
+                        drawRect(
+                            brush = androidx.compose.ui.graphics.Brush.radialGradient(
+                                colors = listOf(androidx.compose.ui.graphics.Color.Transparent, vColor.copy(alpha = vAlpha)),
+                                center = androidx.compose.ui.geometry.Offset(size.width / 2f, size.height / 2f),
+                                radius = radius
+                            )
+                        )
+                    }
+                }
             }
+        }
         } else {
             val listState = rememberLazyListState(initialFirstVisibleItemIndex = (currentPage - 1).coerceIn(0, maxOf(0, images.size - 1)))
             var internalPage by remember { mutableIntStateOf(listState.firstVisibleItemIndex) }
@@ -1276,31 +1303,50 @@ fun ComicArchiveViewer(
                 items(images) { image ->
                     var scale by remember { mutableFloatStateOf(1f) }
                     var offset by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
-                    
-                    AsyncImage(
-                        model = image,
-                        contentDescription = null,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .wrapContentHeight()
-                            .graphicsLayer(
-                                scaleX = scale,
-                                scaleY = scale,
-                                translationX = offset.x,
-                                translationY = offset.y
+                    Box(modifier = Modifier
+                        .fillMaxWidth()
+                        .wrapContentHeight()
+                        .zoomable { newScale, newOffset, zoomed ->
+                            scale = newScale
+                            offset = newOffset
+                            isZoomed = zoomed
+                        }
+                        .pointerInput(Unit) {
+                            detectTapGestures(
+                                onDoubleTap = { onTap() }
                             )
-                            .zoomable { newScale, newOffset, zoomed ->
-                                scale = newScale
-                                offset = newOffset
-                                isZoomed = zoomed
-                            }
-                            .pointerInput(Unit) {
-                                detectTapGestures(
-                                    onDoubleTap = { onTap() }
+                        }
+                    ) {
+                        AsyncImage(
+                            model = image,
+                            contentDescription = null,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .wrapContentHeight()
+                                .graphicsLayer(
+                                    scaleX = scale,
+                                    scaleY = scale,
+                                    translationX = offset.x,
+                                    translationY = offset.y
+                                ),
+                            contentScale = ContentScale.FillWidth,
+                            colorFilter = colorFilter
+                        )
+                        if (settings.vignetteStrength != 0f) {
+                            val vColor = if (settings.vignetteStrength > 0) androidx.compose.ui.graphics.Color.Black else androidx.compose.ui.graphics.Color.White
+                            val vAlpha = Math.abs(settings.vignetteStrength)
+                            androidx.compose.foundation.Canvas(modifier = Modifier.matchParentSize()) {
+                                val radius = kotlin.math.max(size.width, size.height) / 1.2f
+                                drawRect(
+                                    brush = androidx.compose.ui.graphics.Brush.radialGradient(
+                                        colors = listOf(androidx.compose.ui.graphics.Color.Transparent, vColor.copy(alpha = vAlpha)),
+                                        center = androidx.compose.ui.geometry.Offset(size.width / 2f, size.height / 2f),
+                                        radius = radius
+                                    )
                                 )
-                            },
-                        contentScale = ContentScale.FillWidth
-                    )
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -1315,7 +1361,9 @@ class WebAppInterface(
     private val onTextSelectedCallback: (String, Float, Float, String) -> Unit = { _, _, _, _ -> },
     private val onTextSelectionClearedCallback: () -> Unit = {},
     private val onAnnotationClickedCallback: (Int, Float, Float) -> Unit = { _, _, _ -> },
-    private val onSelectionFinishedCallback: (String, Float, Float, String) -> Boolean = { _, _, _, _ -> false }
+    private val onSelectionFinishedCallback: (String, Float, Float, String) -> Boolean = { _, _, _, _ -> false },
+    private val onScrollProgressCallback: (Float) -> Unit = {},
+    private val onAnnotationPositionsCallback: (String) -> Unit = {}
 ) {
     @android.webkit.JavascriptInterface
     fun onTap() { onTapCallback() }
@@ -1328,6 +1376,12 @@ class WebAppInterface(
     
     @android.webkit.JavascriptInterface
     fun reportScroll(isScrolling: Boolean) { onScrollStateChanged(isScrolling) }
+
+    @android.webkit.JavascriptInterface
+    fun reportScrollProgress(progress: Float) { onScrollProgressCallback(progress) }
+
+    @android.webkit.JavascriptInterface
+    fun reportAnnotationPositions(positions: String) { onAnnotationPositionsCallback(positions) }
 
     @android.webkit.JavascriptInterface
     fun onTextSelected(text: String, top: Float, bottom: Float, cfiRange: String) { 
@@ -1359,7 +1413,10 @@ fun EPUBReader(
     onTextSelectionCleared: () -> Unit = {},
     onAnnotationClicked: (Int, Float, Float) -> Unit = { _, _, _ -> },
     annotations: List<com.infer.inferead.data.Annotation> = emptyList(),
-    targetScrollAnnId: Int? = null
+    targetScrollAnnId: Int? = null,
+    targetVerticalProgress: Float? = null,
+    onScrollProgress: (Float) -> Unit = {},
+    onAnnotationPositions: (List<Pair<Int, Float>>) -> Unit = {}
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var epubBook by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<com.infer.inferead.utils.EpubBook?>(null) }
@@ -1520,7 +1577,7 @@ fun EPUBReader(
                             height: auto !important;
                         }
                         body {
-                            padding: 60px 16px !important;
+                            padding: 60px 24px 60px 16px !important;
                             box-sizing: border-box !important;
                             word-wrap: break-word !important;
                             word-break: break-word !important;
@@ -1621,6 +1678,13 @@ fun EPUBReader(
                             var scrollTimeout;
                             function handleScroll() {
                                 Android.reportScroll(true);
+                                
+                                if (!$isHorizontal && !isManga) {
+                                    var maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+                                    var progress = maxScroll > 0 ? window.scrollY / maxScroll : 0;
+                                    Android.reportScrollProgress(progress);
+                                }
+                                
                                 clearTimeout(scrollTimeout);
                                 scrollTimeout = setTimeout(function() {
                                     Android.reportScroll(false);
@@ -1629,6 +1693,13 @@ fun EPUBReader(
                             window.addEventListener('scroll', handleScroll, {passive: true});
                             var wrapEl = document.getElementById('infe-wrapper');
                             if (wrapEl) { wrapEl.addEventListener('scroll', handleScroll, {passive: true}); }
+                            
+                            window.scrollToProgress = function(progress) {
+                                if (!$isHorizontal && !isManga) {
+                                    var maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+                                    window.scrollTo(0, maxScroll * progress);
+                                }
+                            };
                             
                             if (!document.getElementById('epub-next-btn')) {
                                 var btnContainer = document.createElement('div');
@@ -1825,13 +1896,62 @@ fun EPUBReader(
                                             span.appendChild(targetNode);
                                         }
                                     });
+                                    
+                                    // Report annotation vertical positions
+                                    if (!$isHorizontal && !isManga) {
+                                        var maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+                                        if (maxScroll > 0) {
+                                            var posStr = "";
+                                            var seen = {};
+                                            var allMarks = document.querySelectorAll('.inferead-annotation');
+                                            allMarks.forEach(function(mark) {
+                                                var id = mark.id.replace('ann-', '');
+                                                if (!seen[id]) {
+                                                    seen[id] = true;
+                                                    var top = mark.getBoundingClientRect().top + window.scrollY;
+                                                    var progress = top / maxScroll;
+                                                    if (posStr !== "") posStr += ",";
+                                                    posStr += id + ":" + progress;
+                                                }
+                                            });
+                                            Android.reportAnnotationPositions(posStr);
+                                        }
+                                    }
                                 } catch(e) {}
                             };
+                            
+                            function reportPositions() {
+                                if (!$isHorizontal && !isManga) {
+                                    var maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+                                    if (maxScroll > 0) {
+                                        var posStr = "";
+                                        var seen = {};
+                                        var allMarks = document.querySelectorAll('.inferead-annotation');
+                                        allMarks.forEach(function(mark) {
+                                            var id = mark.id.replace('ann-', '');
+                                            if (!seen[id]) {
+                                                seen[id] = true;
+                                                var top = mark.getBoundingClientRect().top + window.scrollY;
+                                                var progress = top / maxScroll;
+                                                if (posStr !== "") posStr += ",";
+                                                posStr += id + ":" + progress;
+                                            }
+                                        });
+                                        Android.reportAnnotationPositions(posStr);
+                                    }
+                                }
+                            }
                             
                             window.scrollToAnnotation = function(id) {
                                 var target = document.getElementById('ann-' + id);
                                 if (target) {
-                                    target.scrollIntoView({behavior: "smooth", block: "center"});
+                                    if (!$isHorizontal && !isManga) {
+                                        var maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+                                        var top = target.getBoundingClientRect().top + window.scrollY;
+                                        window.scrollTo(0, top - window.innerHeight / 3);
+                                    } else {
+                                        target.scrollIntoView({behavior: "smooth", block: "center"});
+                                    }
                                 }
                             };
                         })()
@@ -1855,6 +1975,13 @@ fun EPUBReader(
                 val latestOnTextSelectionCleared = androidx.compose.runtime.rememberUpdatedState(onTextSelectionCleared)
                 val latestOnAnnotationClicked = androidx.compose.runtime.rememberUpdatedState(onAnnotationClicked)
 
+                val latestOnAnnotationPositions = androidx.compose.runtime.rememberUpdatedState(onAnnotationPositions)
+                val latestOnScrollProgress = androidx.compose.runtime.rememberUpdatedState(onScrollProgress)
+
+                var isScrolled by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+                var scrollJob by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<kotlinx.coroutines.Job?>(null) }
+                val viewCoroutineScope = androidx.compose.runtime.rememberCoroutineScope()
+                var webViewRef by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<android.webkit.WebView?>(null) }
                 androidx.compose.foundation.layout.Box(
                     modifier = androidx.compose.ui.Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color(android.graphics.Color.parseColor(actualBg)))
                 ) {
@@ -1862,6 +1989,7 @@ fun EPUBReader(
                         modifier = androidx.compose.ui.Modifier.fillMaxSize(),
                         factory = { ctx ->
                             com.infer.inferead.ui.screens.CustomWebView(ctx).apply {
+                                webViewRef = this
                                 this.settings.javaScriptEnabled = true
                                 this.settings.allowFileAccess = true
                                 this.settings.allowContentAccess = true
@@ -1870,6 +1998,19 @@ fun EPUBReader(
                                 
                                 this.isVerticalScrollBarEnabled = false
                                 this.isHorizontalScrollBarEnabled = false
+                                
+                                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                                    setOnScrollChangeListener { _, _, scrollY, _, oldScrollY ->
+                                        if (scrollY != oldScrollY) {
+                                            isScrolled = true
+                                            scrollJob?.cancel()
+                                            scrollJob = viewCoroutineScope.launch {
+                                                kotlinx.coroutines.delay(1000)
+                                                isScrolled = false
+                                            }
+                                        }
+                                    }
+                                }
 
                                 addJavascriptInterface(WebAppInterface(
                                     onTapCallback = { latestOnTap.value() },
@@ -1894,6 +2035,20 @@ fun EPUBReader(
                                     },
                                     onAnnotationClickedCallback = { annId, top, bottom ->
                                         latestOnAnnotationClicked.value(annId, top, bottom)
+                                    },
+                                    onScrollProgressCallback = { progress ->
+                                        latestOnScrollProgress.value(progress)
+                                    },
+                                    onAnnotationPositionsCallback = { positionsStr ->
+                                        if (positionsStr.isNotBlank()) {
+                                            val posMap = positionsStr.split(",").mapNotNull {
+                                                val parts = it.split(":")
+                                                if (parts.size == 2) {
+                                                    parts[0].toIntOrNull()?.let { id -> Pair(id, parts[1].toFloatOrNull() ?: 0f) }
+                                                } else null
+                                            }
+                                            latestOnAnnotationPositions.value(posMap)
+                                        }
                                     }
                                 ), "Android")
                                 webViewClient = object : android.webkit.WebViewClient() {
@@ -1902,7 +2057,7 @@ fun EPUBReader(
                                         val anns = (tagData?.first as? String) ?: ""
                                         val targetId = tagData?.second as? Int
                                         view?.evaluateJavascript(js, null)
-                                        view?.evaluateJavascript("if(window.renderAnnotations) { window.renderAnnotations('${anns.replace("'", "\\'")}'); }", null)
+                                        view?.evaluateJavascript("if(window.renderAnnotations) { window.renderAnnotations('${anns.replace("'", "\\'")}'); setTimeout(function(){ reportPositions(); }, 500); }", null)
                                         if (targetId != null) {
                                             view?.evaluateJavascript("javascript:scrollToAnnotation($targetId);", null)
                                         }
@@ -1922,7 +2077,7 @@ fun EPUBReader(
                                     "document.querySelectorAll('.inferead-annotation').forEach(function(e){ e.outerHTML = e.innerHTML; });", null
                                 )
                                 webView.evaluateJavascript(
-                                    "if(window.renderAnnotations) { window.renderAnnotations('${annotationsJson.replace("'", "\\'")}'); }", null
+                                    "if(window.renderAnnotations) { window.renderAnnotations('${annotationsJson.replace("'", "\\'")}'); setTimeout(function(){ reportPositions(); }, 500); }", null
                                 )
                                 if (targetScrollAnnId != null) {
                                     webView.evaluateJavascript("javascript:scrollToAnnotation($targetScrollAnnId);", null)
@@ -1930,6 +2085,34 @@ fun EPUBReader(
                             }
                         }
                     )
+                    
+                    androidx.compose.runtime.LaunchedEffect(targetVerticalProgress) {
+                        if (targetVerticalProgress != null) {
+                            webViewRef?.evaluateJavascript("javascript:scrollToProgress($targetVerticalProgress);", null)
+                        }
+                    }
+
+                    val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
+                    androidx.compose.animation.AnimatedVisibility(
+                        visible = isScrolled && (webViewRef?.scrollY ?: 0) > 0 && !settings.isHorizontalScroll,
+                        enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.scaleIn(),
+                        exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.scaleOut(),
+                        modifier = androidx.compose.ui.Modifier.align(androidx.compose.ui.Alignment.TopEnd).padding(top = 70.dp, end = 16.dp)
+                    ) {
+                        androidx.compose.material3.FloatingActionButton(
+                            onClick = { webViewRef?.scrollTo(0, 0) },
+                            shape = androidx.compose.foundation.shape.CircleShape,
+                            modifier = androidx.compose.ui.Modifier.size(40.dp),
+                            containerColor = androidx.compose.material3.MaterialTheme.colorScheme.secondaryContainer,
+                            contentColor = androidx.compose.material3.MaterialTheme.colorScheme.onSecondaryContainer
+                        ) {
+                            androidx.compose.material3.Icon(
+                                imageVector = androidx.compose.material.icons.Icons.Default.KeyboardArrowUp,
+                                contentDescription = "Move to Top",
+                                modifier = androidx.compose.ui.Modifier.size(24.dp)
+                            )
+                        }
+                    }
                 }
             }
     }

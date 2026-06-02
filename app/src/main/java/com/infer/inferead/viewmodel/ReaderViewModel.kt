@@ -19,6 +19,7 @@ fun getFileGroup(format: String?, filePath: String?): String {
         fmt == "EPUB" -> "epub"
         fmt in listOf("PDF", "CBZ", "CBR", "CB7") -> "pdf_cbz"
         fmt in listOf("TXT", "DOC", "DOCX") -> "txt_doc"
+        fmt == "CODING" -> "coding"
         fmt in listOf("IMAGE", "JPG", "JPEG", "PNG", "WEBP", "BMP", "GIF") -> "img"
         else -> "other"
     }
@@ -43,7 +44,8 @@ data class ReaderSettings(
     val isWarmFilterActive: Boolean = false,
     val isHorizontalScroll: Boolean = false,
     val isNoir: Boolean = false,
-    val isNegative: Boolean = false
+    val isNegative: Boolean = false,
+    val vignetteStrength: Float = 0f
 )
 
 class ReaderViewModel(application: Application) : AndroidViewModel(application) {
@@ -90,6 +92,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     private var sessionStartTime: Long = 0
+    private var currentDayOfYear: Int = Calendar.getInstance().get(Calendar.DAY_OF_YEAR)
 
     init {
         loadSettings()
@@ -102,6 +105,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
 
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             val calendar = Calendar.getInstance()
+            currentDayOfYear = calendar.get(Calendar.DAY_OF_YEAR)
             calendar.set(Calendar.HOUR_OF_DAY, 0)
             calendar.set(Calendar.MINUTE, 0)
             calendar.set(Calendar.SECOND, 0)
@@ -116,6 +120,19 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun incrementLiveMinutes() {
+        val today = Calendar.getInstance().get(Calendar.DAY_OF_YEAR)
+        if (today != currentDayOfYear) {
+            val durationSoFar = ((System.currentTimeMillis() - sessionStartTime) / (1000 * 60)).toInt()
+            if (durationSoFar > 0) {
+                viewModelScope.launch {
+                    val session = com.infer.inferead.data.ReadingSession(date = System.currentTimeMillis(), durationMinutes = durationSoFar)
+                    dao.insertReadingSession(session)
+                }
+            }
+            sessionStartTime = System.currentTimeMillis()
+            _liveMinutes.value = 0
+            loadGoalAndStats()
+        }
         _liveMinutes.value += 1
     }
 
@@ -132,7 +149,8 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
             isWarmFilterActive = prefs.getBoolean("isWarmFilterActive$g", false),
             isHorizontalScroll = prefs.getBoolean("isHorizontalScroll$g", false),
             isNoir = prefs.getBoolean("isNoir$g", false),
-            isNegative = prefs.getBoolean("isNegative$g", false)
+            isNegative = prefs.getBoolean("isNegative$g", false),
+            vignetteStrength = prefs.getFloat("vignetteStrength$g", 0f)
         )
     }
 
@@ -152,6 +170,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
             putBoolean("isHorizontalScroll$g", s.isHorizontalScroll)
             putBoolean("isNoir$g", s.isNoir)
             putBoolean("isNegative$g", s.isNegative)
+            putFloat("vignetteStrength$g", s.vignetteStrength)
             apply()
         }
     }
@@ -204,6 +223,11 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
 
     fun setNegative(isNegative: Boolean) {
         _settings.value = _settings.value.copy(isNegative = isNegative, isNoir = false)
+        saveSettings()
+    }
+
+    fun setVignetteStrength(strength: Float) {
+        _settings.value = _settings.value.copy(vignetteStrength = strength)
         saveSettings()
     }
 
@@ -339,6 +363,111 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
             val anns = dao.getAnnotations(fileId).firstOrNull() ?: emptyList()
             anns.filter { it.colorHex == "" || it.cfiRange.contains("|PAGE") }.forEach {
                 dao.deleteAnnotation(it.id)
+            }
+        }
+    }
+
+    fun exportFile(context: Context, file: LibraryFile, modified: Boolean) {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val downloadsDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
+                val infeReadDir = java.io.File(downloadsDir, "infeRead")
+                if (!infeReadDir.exists()) infeReadDir.mkdirs()
+
+                val ext = file.filePath.substringAfterLast('.', "")
+                val baseName = file.title.replace("[^a-zA-Z0-9.-]".toRegex(), "_")
+                val originalFile = java.io.File(file.filePath)
+                
+                if (!originalFile.exists()) return@launch
+
+                if (modified && file.format == "IMAGE") {
+                    val isNoir = prefs.getBoolean("is_noir", false)
+                    val isNegative = prefs.getBoolean("is_negative", false)
+                    
+                    if (isNoir || isNegative) {
+                        val bitmap = android.graphics.BitmapFactory.decodeFile(file.filePath)
+                        if (bitmap != null) {
+                            val outBitmap = android.graphics.Bitmap.createBitmap(bitmap.width, bitmap.height, bitmap.config ?: android.graphics.Bitmap.Config.ARGB_8888)
+                            val canvas = android.graphics.Canvas(outBitmap)
+                            val paint = android.graphics.Paint()
+                            
+                            val cm = android.graphics.ColorMatrix()
+                            if (isNegative) {
+                                cm.set(floatArrayOf(
+                                    -1f, 0f, 0f, 0f, 255f,
+                                    0f, -1f, 0f, 0f, 255f,
+                                    0f, 0f, -1f, 0f, 255f,
+                                    0f, 0f, 0f, 1f, 0f
+                                ))
+                            }
+                            if (isNoir) {
+                                val noirCm = android.graphics.ColorMatrix()
+                                noirCm.setSaturation(0f)
+                                val contrastCm = android.graphics.ColorMatrix()
+                                val scale = 1.2f
+                                val translate = (-.5f * scale + .5f) * 255f
+                                contrastCm.set(floatArrayOf(
+                                    scale, 0f, 0f, 0f, translate,
+                                    0f, scale, 0f, 0f, translate,
+                                    0f, 0f, scale, 0f, translate,
+                                    0f, 0f, 0f, 1f, 0f
+                                ))
+                                noirCm.postConcat(contrastCm)
+                                if (isNegative) cm.postConcat(noirCm) else cm.set(noirCm)
+                            }
+                            paint.colorFilter = android.graphics.ColorMatrixColorFilter(cm)
+                            canvas.drawBitmap(bitmap, 0f, 0f, paint)
+                            
+                            val outFile = java.io.File(infeReadDir, "${baseName}_modified.jpg")
+                            java.io.FileOutputStream(outFile).use { fos ->
+                                outBitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, fos)
+                            }
+                            bitmap.recycle()
+                            outBitmap.recycle()
+                            
+                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                android.widget.Toast.makeText(context, "Exported to Downloads/infeRead", android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                            return@launch
+                        }
+                    }
+                }
+
+                // Default copy
+                val outFile = java.io.File(infeReadDir, "$baseName${if (ext.isNotEmpty()) ".$ext" else ""}")
+                originalFile.copyTo(outFile, overwrite = true)
+                
+                // If modified and EPUB, export annotations to TXT
+                if (modified && file.format == "EPUB") {
+                    val annotations = dao.getAnnotations(file.id).firstOrNull()
+                    if (!annotations.isNullOrEmpty()) {
+                        val txtFile = java.io.File(infeReadDir, "${baseName}_annotations.txt")
+                        txtFile.bufferedWriter().use { writer ->
+                            writer.write("Annotations for ${file.title}\n\n")
+                            annotations.forEach { ann ->
+                                writer.write("Location: ${ann.cfiRange}\n")
+                                if (ann.colorHex != "") {
+                                    writer.write("Type: Highlight (${ann.colorHex})\n")
+                                } else {
+                                    writer.write("Type: Comment/Bookmark\n")
+                                }
+                                if (!ann.textComment.isNullOrEmpty()) {
+                                    writer.write("Note: ${ann.textComment}\n")
+                                }
+                                writer.write("\n")
+                            }
+                        }
+                    }
+                }
+                
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    android.widget.Toast.makeText(context, "Exported to Downloads/infeRead", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    android.widget.Toast.makeText(context, "Export Failed: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                }
             }
         }
     }

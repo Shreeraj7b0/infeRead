@@ -32,10 +32,17 @@ fun AnnotationManagerDialog(
     onDismiss: () -> Unit
 ) {
     var selectedTab by remember { mutableStateOf(0) }
-    val tabs = listOf("Highlights", "Comments")
+    val isTxtGroup = file.format in listOf("TXT", "DOC", "DOCX")
+    val isPdfComic = file.format in listOf("PDF", "CBZ", "CBR", "CB7")
+    val tabs = when {
+        isTxtGroup -> listOf("Highlights")
+        isPdfComic -> listOf("Comments")
+        else -> listOf("Highlights", "Comments")
+    }
     
     val filteredAnnotations = annotations.filter { ann ->
-        if (selectedTab == 0) ann.textComment.isNullOrEmpty() else !ann.textComment.isNullOrEmpty()
+        val currentTab = tabs[selectedTab]
+        if (currentTab == "Highlights") ann.textComment.isNullOrEmpty() else !ann.textComment.isNullOrEmpty()
     }.sortedByDescending { it.timestamp }
 
     ModalBottomSheet(
@@ -63,13 +70,15 @@ fun AnnotationManagerDialog(
                 }
             }
             
-            TabRow(selectedTabIndex = selectedTab) {
-                tabs.forEachIndexed { index, title ->
-                    Tab(
-                        selected = selectedTab == index,
-                        onClick = { selectedTab = index },
-                        text = { Text(title) }
-                    )
+            if (tabs.size > 1) {
+                TabRow(selectedTabIndex = selectedTab) {
+                    tabs.forEachIndexed { index, title ->
+                        Tab(
+                            selected = selectedTab == index,
+                            onClick = { selectedTab = index },
+                            text = { Text(title) }
+                        )
+                    }
                 }
             }
             

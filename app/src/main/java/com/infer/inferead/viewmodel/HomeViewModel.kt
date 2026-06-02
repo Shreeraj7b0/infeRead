@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -25,6 +26,7 @@ import kotlinx.coroutines.isActive
 class HomeViewModel(application: Application) : AndroidViewModel(application) {
     private val dao = InfeReadDatabase.getDatabase(application).infeReadDao()
     private val repository = FileRepository(application, dao)
+    private val prefs = application.getSharedPreferences("reader_settings", android.content.Context.MODE_PRIVATE)
 
     val libraryFiles: StateFlow<List<LibraryFile>> = dao.getAllLibraryFiles()
         .stateIn(
@@ -415,6 +417,197 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                 })
             } catch (e: Exception) {
                 e.printStackTrace()
+            }
+        }
+    }
+    fun exportFile(context: android.content.Context, file: LibraryFile, modified: Boolean) {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val downloadsDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
+                val infeReadDir = java.io.File(downloadsDir, "infeRead")
+                if (!infeReadDir.exists()) infeReadDir.mkdirs()
+
+                val ext = file.filePath.substringAfterLast('.', "")
+                val baseName = file.title.replace("[^a-zA-Z0-9.-]".toRegex(), "_")
+                val originalFile = java.io.File(file.filePath)
+                
+                if (!originalFile.exists()) return@launch
+
+                if (modified && file.format == "IMAGE") {
+                    val isNoir = prefs.getBoolean("is_noir", false)
+                    val isNegative = prefs.getBoolean("is_negative", false)
+                    
+                    if (isNoir || isNegative) {
+                        val bitmap = android.graphics.BitmapFactory.decodeFile(file.filePath)
+                        if (bitmap != null) {
+                            val outBitmap = android.graphics.Bitmap.createBitmap(bitmap.width, bitmap.height, bitmap.config ?: android.graphics.Bitmap.Config.ARGB_8888)
+                            val canvas = android.graphics.Canvas(outBitmap)
+                            val paint = android.graphics.Paint()
+                            
+                            val cm = android.graphics.ColorMatrix()
+                            if (isNegative) {
+                                cm.set(floatArrayOf(
+                                    -1f, 0f, 0f, 0f, 255f,
+                                    0f, -1f, 0f, 0f, 255f,
+                                    0f, 0f, -1f, 0f, 255f,
+                                    0f, 0f, 0f, 1f, 0f
+                                ))
+                            }
+                            if (isNoir) {
+                                val noirCm = android.graphics.ColorMatrix()
+                                noirCm.setSaturation(0f)
+                                val contrastCm = android.graphics.ColorMatrix()
+                                val scale = 1.2f
+                                val translate = (-.5f * scale + .5f) * 255f
+                                contrastCm.set(floatArrayOf(
+                                    scale, 0f, 0f, 0f, translate,
+                                    0f, scale, 0f, 0f, translate,
+                                    0f, 0f, scale, 0f, translate,
+                                    0f, 0f, 0f, 1f, 0f
+                                ))
+                                noirCm.postConcat(contrastCm)
+                                if (isNegative) cm.postConcat(noirCm) else cm.set(noirCm)
+                            }
+                            paint.colorFilter = android.graphics.ColorMatrixColorFilter(cm)
+                            canvas.drawBitmap(bitmap, 0f, 0f, paint)
+                            
+                            val outFile = java.io.File(infeReadDir, "${baseName}_modified.jpg")
+                            java.io.FileOutputStream(outFile).use { fos ->
+                                outBitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, fos)
+                            }
+                            bitmap.recycle()
+                            outBitmap.recycle()
+                            
+                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                android.widget.Toast.makeText(context, "Exported to Downloads/infeRead", android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                            return@launch
+                        }
+                    }
+                }
+
+                // Default copy
+                val outFile = java.io.File(infeReadDir, "$baseName${if (ext.isNotEmpty()) ".$ext" else ""}")
+                originalFile.copyTo(outFile, overwrite = true)
+                
+                // If modified and EPUB, export annotations to TXT
+                if (modified && file.format == "EPUB") {
+                    val annotations = dao.getAnnotations(file.id).firstOrNull()
+                    if (!annotations.isNullOrEmpty()) {
+                        val txtFile = java.io.File(infeReadDir, "${baseName}_annotations.txt")
+                        txtFile.bufferedWriter().use { writer ->
+                            writer.write("Annotations for ${file.title}\n\n")
+                            annotations.forEach { ann ->
+                                writer.write("Location: ${ann.cfiRange}\n")
+                                if (ann.colorHex != "") {
+                                    writer.write("Type: Highlight (${ann.colorHex})\n")
+                                } else {
+                                    writer.write("Type: Comment/Bookmark\n")
+                                }
+                                if (!ann.textComment.isNullOrEmpty()) {
+                                    writer.write("Note: ${ann.textComment}\n")
+                                }
+                                writer.write("\n")
+                            }
+                        }
+                    }
+                }
+                
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    android.widget.Toast.makeText(context, "Exported to Downloads/infeRead", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    android.widget.Toast.makeText(context, "Export Failed: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    fun convertCodeFile(context: android.content.Context, file: LibraryFile, format: String, isShare: Boolean) {
+        if (_isConverting.value) return
+        
+        _isConverting.value = true
+        _conversionProgress.value = 0
+        _isConversionPaused.value = false
+        _convertingFileName.value = file.title
+        
+        conversionJob = viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val text = java.io.File(file.filePath).readText()
+                val originalExt = file.filePath.substringAfterLast('.', "txt")
+                // Format baseName per user request: sample(py)
+                val baseName = "${file.title}($originalExt)"
+                
+                val outputFiles = mutableListOf<java.io.File>()
+                
+                val outDir = if (isShare) context.cacheDir else {
+                    val dir = java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), "infeRead")
+                    if (!dir.exists()) dir.mkdirs()
+                    dir
+                }
+                
+                val onProgress: (Int) -> Unit = { p -> _conversionProgress.value = p }
+                val checkPause: suspend () -> Unit = {
+                    while (_isConversionPaused.value && kotlinx.coroutines.currentCoroutineContext().isActive) {
+                        kotlinx.coroutines.delay(500)
+                    }
+                }
+                
+                when (format) {
+                    "PDF" -> {
+                        val pdfFile = java.io.File(outDir, "$baseName.pdf")
+                        com.infer.inferead.utils.CodeConverter.convertToPdf(context, text, pdfFile, onProgress, checkPause)
+                        outputFiles.add(pdfFile)
+                    }
+                    "TXT" -> {
+                        val txtFile = java.io.File(outDir, "$baseName.txt")
+                        java.io.File(file.filePath).copyTo(txtFile, overwrite = true)
+                        onProgress(100)
+                        outputFiles.add(txtFile)
+                    }
+                    "IMG(JPG)" -> {
+                        val files = com.infer.inferead.utils.CodeConverter.convertToImages(context, text, outDir, baseName, onProgress, checkPause)
+                        outputFiles.addAll(files)
+                    }
+                }
+                
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    if (isShare && outputFiles.isNotEmpty()) {
+                        val uris = outputFiles.map { 
+                            androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", it) 
+                        }
+                        val intent = if (uris.size == 1) {
+                            android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                type = if (format == "PDF") "application/pdf" else if (format == "TXT") "text/plain" else "image/jpeg"
+                                putExtra(android.content.Intent.EXTRA_STREAM, uris.first())
+                            }
+                        } else {
+                            android.content.Intent(android.content.Intent.ACTION_SEND_MULTIPLE).apply {
+                                type = "image/jpeg"
+                                putParcelableArrayListExtra(android.content.Intent.EXTRA_STREAM, ArrayList(uris))
+                            }
+                        }
+                        intent.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                        context.startActivity(android.content.Intent.createChooser(intent, "Share File").apply {
+                            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                        })
+                    } else if (!isShare && outputFiles.isNotEmpty()) {
+                        android.widget.Toast.makeText(context, "Saved to Downloads/infeRead", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } catch (e: Exception) {
+                if (e !is kotlinx.coroutines.CancellationException) {
+                    e.printStackTrace()
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        android.widget.Toast.makeText(context, "Conversion Failed: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } finally {
+                _isConverting.value = false
+                _convertingFileName.value = null
             }
         }
     }

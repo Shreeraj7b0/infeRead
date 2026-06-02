@@ -27,8 +27,9 @@ class FileRepository(private val context: Context, private val dao: InfeReadDao)
             val mimeType = contentResolver.getType(uri) ?: ""
             var format = when {
                 mimeType.contains("pdf") || fileName.endsWith(".pdf", true) -> "PDF"
+                fileName.endsWith(".md", true) || fileName.endsWith(".py", true) || fileName.endsWith(".c", true) || fileName.endsWith(".java", true) || fileName.endsWith(".js", true) || fileName.endsWith(".css", true) -> "CODING"
                 mimeType.contains("text") || fileName.endsWith(".txt", true) || fileName.endsWith(".doc", true) || fileName.endsWith(".docx", true) || mimeType.contains("msword") || mimeType.contains("wordprocessingml") -> "TXT"
-                mimeType.contains("image") && !fileName.endsWith(".cbz", true) -> "IMAGE"
+                (mimeType.contains("image") && !fileName.endsWith(".cbz", true)) || fileName.endsWith(".jpg", true) || fileName.endsWith(".jpeg", true) || fileName.endsWith(".png", true) || fileName.endsWith(".heic", true) || fileName.endsWith(".heif", true) || fileName.endsWith(".webp", true) || fileName.endsWith(".bmp", true) || fileName.endsWith(".svg", true) -> "IMAGE"
                 mimeType.contains("epub") || fileName.endsWith(".epub", true) -> "EPUB"
                 mimeType.contains("cbz") || mimeType.contains("zip") || fileName.endsWith(".cbz", true) || fileName.endsWith(".zip", true) -> "CBZ"
                 fileName.endsWith(".cbr", true) || fileName.endsWith(".rar", true) -> "CBR"

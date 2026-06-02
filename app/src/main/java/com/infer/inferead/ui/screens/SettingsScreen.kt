@@ -16,6 +16,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -31,7 +32,7 @@ import android.provider.OpenableColumns
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun SettingsScreen(
     onNavigateBack: () -> Unit,
@@ -611,18 +612,61 @@ fun SettingsScreen(
                       modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
                       textAlign = androidx.compose.ui.text.style.TextAlign.Center
                   )
-                  @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
-                  androidx.compose.foundation.layout.FlowRow(
-                      modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp, start = 16.dp, end = 16.dp),
-                      horizontalArrangement = Arrangement.Center,
-                      verticalArrangement = Arrangement.spacedBy(8.dp)
-                  ) {
-                      listOf("EPUB", "PDF", "CBZ", "CBR", "TXT", "DOC", "DOCX").forEach { format ->
-                          androidx.compose.material3.SuggestionChip(
-                              onClick = { },
-                              label = { Text(format, style = MaterialTheme.typography.labelSmall) },
-                              modifier = Modifier.padding(horizontal = 4.dp)
-                          )
+                  val sections = listOf(
+                      "E-Books" to listOf("EPUB"),
+                      "Documents" to listOf("PDF", "DOC", "DOCX"),
+                      "Comics & Manga" to listOf("CBZ", "CBR", "CB7"),
+                      "Plain Text" to listOf("TXT"),
+                      "Source Code" to listOf("KT", "JAVA", "PY", "HTML", "JS", "C", "CPP", "JSON"),
+                      "Images" to listOf("JPG", "JPEG", "PNG", "WEBP")
+                  )
+                  val pagerState = androidx.compose.foundation.pager.rememberPagerState(pageCount = { sections.size }, initialPage = 0)
+                  
+                  androidx.compose.foundation.pager.HorizontalPager(
+                      state = pagerState,
+                      contentPadding = PaddingValues(horizontal = 64.dp),
+                      modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp)
+                  ) { page ->
+                      val pageOffset = (pagerState.currentPage - page) + pagerState.currentPageOffsetFraction
+                      val fraction = 1f - Math.abs(pageOffset).coerceIn(0f, 1f)
+                      val scale = 0.85f + (0.15f * fraction)
+                      val alpha = 0.5f + (0.5f * fraction)
+                      
+                      Card(
+                          modifier = Modifier
+                              .fillMaxWidth()
+                              .padding(horizontal = 8.dp)
+                              .graphicsLayer {
+                                  scaleX = scale
+                                  scaleY = scale
+                                  this.alpha = alpha
+                              },
+                          shape = RoundedCornerShape(16.dp),
+                          colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                          elevation = CardDefaults.cardElevation(defaultElevation = if (page == pagerState.currentPage) 8.dp else 0.dp)
+                      ) {
+                          Column(
+                              modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                              horizontalAlignment = Alignment.CenterHorizontally
+                          ) {
+                              val (title, formats) = sections[page]
+                              Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                              Spacer(Modifier.height(12.dp))
+                              @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+                              androidx.compose.foundation.layout.FlowRow(
+                                  horizontalArrangement = Arrangement.Center,
+                                  verticalArrangement = Arrangement.spacedBy(4.dp)
+                              ) {
+                                  formats.forEach { fmt ->
+                                      androidx.compose.material3.AssistChip(
+                                          onClick = { },
+                                          label = { Text(fmt, fontSize = 10.sp) },
+                                          modifier = Modifier.padding(horizontal = 2.dp),
+                                          shape = RoundedCornerShape(6.dp)
+                                      )
+                                  }
+                              }
+                          }
                       }
                   }
                   

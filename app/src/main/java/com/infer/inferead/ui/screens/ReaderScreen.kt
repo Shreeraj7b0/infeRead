@@ -243,10 +243,23 @@ fun ReaderScreen(
     var isTitleExpanded by remember { mutableStateOf(false) }
     val textScrollState = rememberScrollState()
     val bookmarkedPages by viewModel.bookmarkedPages.collectAsState()
+    
+    var verticalScrollProgress by remember { mutableStateOf(0f) }
+    var targetVerticalProgress by remember { mutableStateOf<Float?>(null) }
+    var annotationPositions by remember { mutableStateOf(emptyList<Pair<Int, Float>>()) }
+    var showVerticalScrubber by remember { mutableStateOf(false) }
+    var verticalScrubberTimeoutJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
 
     LaunchedEffect(settings.isReaderModeActive) {
         if (settings.isReaderModeActive) {
             showScrubber = false
+        } else {
+            showVerticalScrubber = true
+            verticalScrubberTimeoutJob?.cancel()
+            verticalScrubberTimeoutJob = scope.launch {
+                kotlinx.coroutines.delay(1500)
+                showVerticalScrubber = false
+            }
         }
     }
 
@@ -630,39 +643,67 @@ fun ReaderScreen(
                                     }
                             )
                             currentFile?.format?.let { format ->
-                                Surface(
-                                    color = if (settings.contrastMode == ContrastMode.Dark) Color(0xFF9AB0E6).copy(alpha = 0.2f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
-                                    contentColor = if (settings.contrastMode == ContrastMode.Dark) Color(0xFF9AB0E6) else MaterialTheme.colorScheme.primary,
-                                    shape = RoundedCornerShape(4.dp),
-                                    border = androidx.compose.foundation.BorderStroke(
-                                        width = 1.dp,
-                                        color = if (settings.contrastMode == ContrastMode.Dark) Color(0xFF9AB0E6) else MaterialTheme.colorScheme.primary
-                                    )
-                                ) {
-                                    Text(
-                                        text = format,
-                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                    )
+                                var formatDropdownExpanded by remember { mutableStateOf(false) }
+                                Box {
+                                    Surface(
+                                        color = if (settings.contrastMode == ContrastMode.Dark) Color(0xFF9AB0E6).copy(alpha = 0.2f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                                        contentColor = if (settings.contrastMode == ContrastMode.Dark) Color(0xFF9AB0E6) else MaterialTheme.colorScheme.primary,
+                                        shape = RoundedCornerShape(4.dp),
+                                        border = androidx.compose.foundation.BorderStroke(
+                                            width = 1.dp,
+                                            color = if (settings.contrastMode == ContrastMode.Dark) Color(0xFF9AB0E6) else MaterialTheme.colorScheme.primary
+                                        ),
+                                        modifier = Modifier.clickable { formatDropdownExpanded = true }
+                                    ) {
+                                        val ext = currentFile?.filePath?.substringAfterLast('.', "")?.lowercase()
+                                        Text(
+                                            text = if (ext.isNullOrEmpty()) format else ".$ext",
+                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                    androidx.compose.material3.DropdownMenu(
+                                        expanded = formatDropdownExpanded,
+                                        onDismissRequest = { formatDropdownExpanded = false }
+                                    ) {
+                                        val sectionName = when(format) {
+                                            "EPUB" -> "Ebooks"
+                                            "TXT" -> "Text"
+                                            "CBZ", "CBR", "CB7" -> "Comic/Manga"
+                                            "CODING" -> "Coding"
+                                            "IMAGE" -> "Images"
+                                            "PDF" -> "PDF"
+                                            else -> format
+                                        }
+                                        androidx.compose.material3.DropdownMenuItem(
+                                            text = { Text("Type: $sectionName") },
+                                            onClick = { formatDropdownExpanded = false }
+                                        )
+                                    }
                                 }
                             }
-                        }
-
-                        IconButton(
-                            onClick = { viewModel.toggleBookmark() },
-                            modifier = Modifier.align(Alignment.CenterVertically)
-                        ) {
-                            val isCurrentPageBookmarked = bookmarkedPages.contains(currentFile?.currentPage ?: -1)
-                            val dotColor = if (isCurrentPageBookmarked) Color(0xFFFFC107)
-                                else (if (settings.contrastMode == ContrastMode.Dark) Color(0xFF9AB0E6) else MaterialTheme.colorScheme.primary).copy(alpha = 0.5f)
-                            Canvas(
-                                modifier = Modifier.size(24.dp)
-                            ) {
-                                val r = size.minDimension / 2f
-                                if (isCurrentPageBookmarked) {
-                                    drawCircle(color = dotColor, radius = r)
-                                } else {
-                                    drawCircle(color = dotColor, radius = r, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx()))
+                            val shouldShowBookmark = currentFile?.format !in listOf("TXT", "CODING") || settings.isHorizontalScroll
+                            if (shouldShowBookmark) {
+                                IconButton(
+                                    onClick = { viewModel.toggleBookmark() },
+                                    modifier = Modifier.align(Alignment.CenterVertically)
+                                ) {
+                                    val isCurrentPageBookmarked = bookmarkedPages.contains(currentFile?.currentPage ?: -1)
+                                    val dotColor = if (isCurrentPageBookmarked) Color(0xFFFFC107)
+                                        else (if (settings.contrastMode == ContrastMode.Dark) Color(0xFF9AB0E6) else MaterialTheme.colorScheme.primary).copy(alpha = 0.5f)
+                                    Canvas(
+                                        modifier = Modifier.size(24.dp)
+                                    ) {
+                                        drawCircle(
+                                            color = dotColor,
+                                            radius = 3.dp.toPx()
+                                        )
+                                    }
+                                    Icon(
+                                        imageVector = if (isCurrentPageBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                                        contentDescription = "Bookmark",
+                                        tint = if (settings.contrastMode == ContrastMode.Dark) Color(0xFF9AB0E6) else MaterialTheme.colorScheme.primary
+                                    )
                                 }
                             }
                         }
@@ -792,43 +833,36 @@ fun ReaderScreen(
                             isWarmFilterActive = settings.isWarmFilterActive,
                             isHorizontalScroll = settings.isHorizontalScroll,
                             isReaderModeActive = settings.isReaderModeActive,
+                            isNegative = settings.isNegative,
                             currentPage = file.currentPage,
                             onPageChanged = { page -> viewModel.updateCurrentPage(page) },
                             onTotalPages = { total -> viewModel.updateTotalPages(total) },
                             onTap = toggleReaderMode
                         )
-                        "TXT" -> TextViewer(
+                        "TXT", "CODING" -> TXTReader(
                             filePath = file.filePath,
+                            format = file.format,
                             settings = settings,
-                            isReaderModeActive = settings.isReaderModeActive,
-                            currentPage = file.currentPage,
-                            scrollState = textScrollState,
+                            chapterIndex = file.currentPage,
                             onPageChanged = { page -> viewModel.updateCurrentPage(page) },
-                            onTotalPages = { total -> viewModel.updateTotalPages(total) },
-                            onTap = toggleReaderMode,
-                            activeHighlightColor = activeHighlightMode,
-                            onTextSelected = { text, bounds ->
-                                if (text == "DELETE") {
-                                    val annId = bounds.toIntOrNull() ?: return@TextViewer
-                                    viewModel.deleteAnnotation(com.infer.inferead.data.Annotation(id = annId, fileId = 0, cfiRange = "", colorHex = "")) // only ID matters
-                                } else {
-                                    if (!activeHighlightMode.isNullOrEmpty()) {
-                                        viewModel.insertAnnotation(
-                                            com.infer.inferead.data.Annotation(
-                                                fileId = file.id,
-                                                selectedText = text,
-                                                cfiRange = bounds,
-                                                colorHex = activeHighlightMode ?: "#c25d5d",
-                                                timestamp = System.currentTimeMillis()
-                                            )
-                                        )
-                                        viewModel.setActiveHighlightMode(null)
-                                    }
-                                }
+                            onTotalPagesLoaded = { total, previews -> 
+                                viewModel.updateTotalPages(total)
                             },
-                            annotations = pageAnns
+                            onTap = toggleReaderMode,
+                            targetVerticalProgress = targetVerticalProgress,
+                            onScrollProgress = { progress ->
+                                verticalScrollProgress = progress
+                                if (!showVerticalScrubber) {
+                                    showVerticalScrubber = true
+                                }
+                                verticalScrubberTimeoutJob?.cancel()
+                                verticalScrubberTimeoutJob = scope.launch {
+                                    kotlinx.coroutines.delay(1500)
+                                    showVerticalScrubber = false
+                                }
+                            }
                         )
-                        "IMAGE" -> ImageViewer(file.filePath, isNoir = settings.isNoir, isNegative = settings.isNegative, onTap = toggleReaderMode)
+                        "IMAGE" -> ImageViewer(file.filePath, isNoir = settings.isNoir, isNegative = settings.isNegative, vignetteStrength = settings.vignetteStrength, onTap = toggleReaderMode)
                         "CBZ", "CBR", "CB7" -> ComicArchiveViewer(
                             filePath = file.filePath,
                             format = file.format,
@@ -892,7 +926,23 @@ fun ReaderScreen(
                                     }
                                 }
                             },
-                            annotations = pageAnns
+                            annotations = pageAnns,
+                            targetScrollAnnId = targetScrollAnnId,
+                            targetVerticalProgress = targetVerticalProgress,
+                            onScrollProgress = { progress ->
+                                verticalScrollProgress = progress
+                                if (!showVerticalScrubber) {
+                                    showVerticalScrubber = true
+                                }
+                                verticalScrubberTimeoutJob?.cancel()
+                                verticalScrubberTimeoutJob = scope.launch {
+                                    kotlinx.coroutines.delay(1500)
+                                    showVerticalScrubber = false
+                                }
+                            },
+                            onAnnotationPositions = { positions ->
+                                annotationPositions = positions
+                            }
                         )
                         else -> {
                             Text(
@@ -904,7 +954,7 @@ fun ReaderScreen(
                     }
 
                     // Text Selection Hover Menu
-                    if (textSelectionData != null && file.format == "EPUB") {
+                    if (textSelectionData != null && (file.format == "EPUB" || file.format in listOf("TXT", "DOC", "DOCX"))) {
                         val sel = textSelectionData!!
                         val density = LocalDensity.current.density
                         // Determine whether to show above or below based on position
@@ -990,16 +1040,18 @@ fun ReaderScreen(
                                             Text("Highlight", color = MaterialTheme.colorScheme.onSurface)
                                         }
                                         
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Box(modifier = Modifier.width(1.dp).height(24.dp).background(Color.Gray.copy(alpha = 0.5f)))
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        
-                                        TextButton(onClick = { 
-                                            commentingSelectionData = sel
-                                            showCommentDialogForSelection = true
-                                            textSelectionData = null
-                                        }) {
-                                            Text("Comment", color = MaterialTheme.colorScheme.onSurface)
+                                        if (file.format == "EPUB") {
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Box(modifier = Modifier.width(1.dp).height(24.dp).background(Color.Gray.copy(alpha = 0.5f)))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            
+                                            TextButton(onClick = { 
+                                                commentingSelectionData = sel
+                                                showCommentDialogForSelection = true
+                                                textSelectionData = null
+                                            }) {
+                                                Text("Comment", color = MaterialTheme.colorScheme.onSurface)
+                                            }
                                         }
                                     }
                                 }
@@ -1180,11 +1232,33 @@ fun ReaderScreen(
                     .fillMaxSize()
                     .padding(16.dp)
             ) {
+                if (currentFile?.format in listOf("TXT", "CODING", "EPUB") && !settings.isHorizontalScroll) {
+                    val scrubberAllAnns by remember(currentFile) { viewModel.getAnnotationsForFile(currentFile?.id ?: 0) }.collectAsState(initial = emptyList())
+                    val scrubberAnns = remember(scrubberAllAnns, currentFile?.currentPage, currentFile?.format) {
+                        if (currentFile?.format == "EPUB") {
+                            scrubberAllAnns.filter { it.cfiRange.startsWith("${currentFile?.currentPage}|") }
+                        } else {
+                            scrubberAllAnns
+                        }
+                    }
+                    VerticalScrubber(
+                        progressProvider = { verticalScrollProgress },
+                        onProgressChange = { p -> targetVerticalProgress = p },
+                        annotationPositions = annotationPositions,
+                        annotations = scrubberAnns,
+                        isBookmarked = bookmarkedPages.contains(currentFile?.currentPage ?: -1),
+                        visible = showVerticalScrubber,
+                        modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                            .padding(end = 0.dp)
+                    )
+                }
+
                 // Bottom left scrubber button (not shown for IMAGE files)
                 AnimatedVisibility(
                     visible = !settings.isReaderModeActive && currentFile?.format != "IMAGE",
-                    enter = if (settings.contrastMode == ContrastMode.EInk) EnterTransition.None else fadeIn(),
-                    exit = if (settings.contrastMode == ContrastMode.EInk) ExitTransition.None else fadeOut(),
+                    enter = if (settings.contrastMode == ContrastMode.EInk) EnterTransition.None else fadeIn(animationSpec = androidx.compose.animation.core.spring(stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow)),
+                    exit = if (settings.contrastMode == ContrastMode.EInk) ExitTransition.None else fadeOut(animationSpec = androidx.compose.animation.core.spring(stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow)),
                     modifier = Modifier.align(Alignment.BottomStart)
                 ) {
                     FloatingActionButton(
@@ -1201,8 +1275,8 @@ fun ReaderScreen(
                 // Bottom center pagination
                 AnimatedVisibility(
                     visible = !settings.isReaderModeActive && currentFile != null && currentFile!!.totalPages > 0,
-                    enter = if (settings.contrastMode == ContrastMode.EInk) EnterTransition.None else fadeIn(),
-                    exit = if (settings.contrastMode == ContrastMode.EInk) ExitTransition.None else fadeOut(),
+                    enter = if (settings.contrastMode == ContrastMode.EInk) EnterTransition.None else fadeIn(animationSpec = androidx.compose.animation.core.spring(stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow)),
+                    exit = if (settings.contrastMode == ContrastMode.EInk) ExitTransition.None else fadeOut(animationSpec = androidx.compose.animation.core.spring(stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow)),
                     modifier = Modifier.align(Alignment.BottomCenter)
                 ) {
                     Surface(
@@ -1224,8 +1298,14 @@ fun ReaderScreen(
             // Persistent Highlight Toolbar
             androidx.compose.animation.AnimatedVisibility(
                 visible = activeHighlightMode != null && activeHighlightMode != "" && activeHighlightMode != "COMMENT_MODE",
-                enter = androidx.compose.animation.slideInVertically(initialOffsetY = { -it }) + androidx.compose.animation.fadeIn(),
-                exit = androidx.compose.animation.slideOutVertically(targetOffsetY = { -it }) + androidx.compose.animation.fadeOut(),
+                enter = androidx.compose.animation.slideInVertically(
+                    initialOffsetY = { -it }, 
+                    animationSpec = androidx.compose.animation.core.spring(dampingRatio = androidx.compose.animation.core.Spring.DampingRatioLowBouncy, stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow)
+                ) + androidx.compose.animation.fadeIn(),
+                exit = androidx.compose.animation.slideOutVertically(
+                    targetOffsetY = { -it }, 
+                    animationSpec = androidx.compose.animation.core.spring(stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow)
+                ) + androidx.compose.animation.fadeOut(),
                 modifier = Modifier.align(Alignment.TopCenter).padding(top = innerPadding.calculateTopPadding() + 64.dp)
             ) {
                 Surface(
@@ -1261,8 +1341,8 @@ fun ReaderScreen(
                 }
             }
 
-            // PDF Page Scrubber Overlay Dialog
-            if (showScrubber && currentFile != null && (currentFile!!.format == "PDF" || currentFile!!.format == "CBZ" || currentFile!!.format == "EPUB") && currentFile!!.totalPages > 0) {
+            // Page Scrubber Overlay Dialog
+            if (showScrubber && currentFile != null && currentFile!!.totalPages > 0) {
                 var scrubbingPage by remember(showScrubber, currentFile?.currentPage) {
                     mutableFloatStateOf(currentFile?.currentPage?.toFloat() ?: 1f)
                 }
@@ -1508,144 +1588,7 @@ fun ReaderScreen(
                 }
             }
 
-            // TXT Page Scrubber Overlay (Slider only) when in horizontal scroll
-            if (showScrubber && currentFile != null && currentFile!!.format == "TXT" && settings.isHorizontalScroll && currentFile!!.totalPages > 0) {
-                var scrubbingPage by remember(showScrubber, currentFile?.currentPage) {
-                    mutableFloatStateOf(currentFile?.currentPage?.toFloat() ?: 1f)
-                }
-                
-                Column(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(bottom = 96.dp)
-                        .fillMaxWidth()
-                        .pointerInput(Unit) {
-                            detectTapGestures { /* Intercept click so it doesn't dismiss */ }
-                        },
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Surface(
-                        color = barColor.copy(alpha = 0.85f),
-                        shape = CircleShape,
-                        shadowElevation = 4.dp
-                    ) {
-                        Text(
-                            text = "Page ${scrubbingPage.roundToInt()} of ${currentFile!!.totalPages}",
-                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                            color = textColor,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Slider(
-                        value = scrubbingPage,
-                        onValueChange = { pageVal ->
-                            scrubbingPage = pageVal
-                        },
-                        onValueChangeFinished = {
-                            viewModel.updateCurrentPage(scrubbingPage.roundToInt())
-                        },
-                        valueRange = 1f..currentFile!!.totalPages.toFloat(),
-                        steps = if (currentFile!!.totalPages > 2) currentFile!!.totalPages - 2 else 0,
-                        colors = SliderDefaults.colors(
-                            thumbColor = if (settings.contrastMode == ContrastMode.Dark) Color(0xFF9AB0E6) else MaterialTheme.colorScheme.primary,
-                            activeTrackColor = if (settings.contrastMode == ContrastMode.Dark) Color(0xFF9AB0E6) else MaterialTheme.colorScheme.primary,
-                            inactiveTrackColor = textColor.copy(alpha = 0.24f)
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 32.dp)
-                            .height(32.dp)
-                    )
-                }
-            }
-
-            // TXT Scroll Minimap Overlay
-            if (showScrubber && currentFile != null && currentFile!!.format == "TXT" && !settings.isHorizontalScroll) {
-                val scope = rememberCoroutineScope()
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.CenterEnd)
-                        .padding(end = 16.dp)
-                        .width(60.dp)
-                        .height(300.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(barColor.copy(alpha = 0.4f))
-                        .border(
-                            width = 1.dp,
-                            color = textColor.copy(alpha = 0.2f),
-                            shape = RoundedCornerShape(8.dp)
-                        )
-                        .pointerInput(textScrollState.maxValue) {
-                            detectTapGestures { offset ->
-                                val ratio = (offset.y / size.height.toFloat()).coerceIn(0f, 1f)
-                                scope.launch {
-                                    textScrollState.scrollTo((ratio * textScrollState.maxValue).roundToInt())
-                                }
-                            }
-                        }
-                        .pointerInput(textScrollState.maxValue) {
-                            detectDragGestures { change, _ ->
-                                change.consume()
-                                val ratio = (change.position.y / size.height.toFloat()).coerceIn(0f, 1f)
-                                scope.launch {
-                                    textScrollState.scrollTo((ratio * textScrollState.maxValue).roundToInt())
-                                }
-                            }
-                        }
-                ) {
-                    val totalHeight = 300.dp
-                    val viewportHeight = 60.dp
-                    val maxOffset = totalHeight - viewportHeight
-                    val progress = if (textScrollState.maxValue > 0) {
-                        textScrollState.value.toFloat() / textScrollState.maxValue
-                    } else {
-                        0f
-                    }
-                    val offsetVal = (progress * maxOffset.value).dp
-
-                    // Draw simulated text lines
-                    androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
-                        val canvasWidth = size.width
-                        val canvasHeight = size.height
-                        val lineSpacing = 6f
-                        val lineHeight = 3f
-                        var y = 10f
-                        val random = java.util.Random(42)
-                        while (y < canvasHeight - 10f) {
-                            val wordCount = random.nextInt(3) + 2
-                            var x = 10f
-                            for (i in 0 until wordCount) {
-                                val wordWidth = random.nextFloat() * (canvasWidth / 4f) + 8f
-                                if (x + wordWidth > canvasWidth - 8f) break
-                                drawRoundRect(
-                                    color = textColor.copy(alpha = 0.15f),
-                                    topLeft = androidx.compose.ui.geometry.Offset(x, y),
-                                    size = androidx.compose.ui.geometry.Size(wordWidth, lineHeight),
-                                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(1.5f, 1.5f)
-                                )
-                                x += wordWidth + 3f
-                            }
-                            y += lineHeight + lineSpacing
-                        }
-                    }
-
-                    // Rectangular viewport frame
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(viewportHeight)
-                            .offset(y = offsetVal)
-                            .border(
-                                width = 2.dp,
-                                color = if (settings.contrastMode == ContrastMode.Dark) Color(0xFF9AB0E6) else MaterialTheme.colorScheme.primary,
-                                shape = RoundedCornerShape(4.dp)
-                            )
-                            .background(textColor.copy(alpha = 0.08f))
-                    )
-                }
+            // Removed custom TXT scrubbers in favor of the universal scrubber above.
             }
         }
         
@@ -1673,6 +1616,7 @@ fun ReaderScreen(
                 val formatGroup = when (currentFile?.format) {
                     "EPUB" -> "EPUB"
                     "TXT", "DOC", "DOCX" -> "TXT_DOC_DOCX"
+                    "CODING" -> "CODING"
                     "CBZ", "CBR", "CB7" -> "CBZ_CBR_CB7"
                     "PDF" -> "PDF"
                     "IMAGE" -> "IMAGE"
@@ -1720,6 +1664,48 @@ fun ReaderScreen(
                             }
                         }
                     )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Color.White.copy(alpha = 0.05f))
+                            .padding(16.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Vignette Effect",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = textColor
+                            )
+                            val displayValue = String.format(java.util.Locale.US, "%.2f", settings.vignetteStrength)
+                            val displayStr = if (settings.vignetteStrength > 0) "+$displayValue" else displayValue
+                            Text(
+                                text = displayStr,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        Text(
+                            text = "Slide left for white borders, right for black borders",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = textColor.copy(alpha = 0.7f)
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Slider(
+                            value = settings.vignetteStrength,
+                            onValueChange = { viewModel.setVignetteStrength(Math.round(it * 20f) / 20f) },
+                            valueRange = -1f..1f,
+                            steps = 39,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
                 } else if (formatGroup == "EPUB") {
                     var showCommentOptions by remember { mutableStateOf(false) }
                     
@@ -1879,41 +1865,24 @@ fun ReaderScreen(
                         }
                     }
 
-                } else if (formatGroup == "TXT_DOC_DOCX") {
+                } else if (formatGroup == "TXT_DOC_DOCX" || formatGroup == "CODING") {
                     
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-                        horizontalArrangement = Arrangement.SpaceEvenly,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(onClick = { 
-                            viewModel.setActiveHighlightMode("#c25d5d")
-                            showSettingsSheet = false
-                        }) { Icon(Icons.Default.Highlight, contentDescription = "Highlight", tint = textColor) }
-                        IconButton(onClick = { 
-                            showSettingsSheet = false
-                            viewModel.setShowAnnotationManager(true) 
-                        }) { Icon(Icons.Default.Search, contentDescription = "Search Annotations", tint = textColor) }
-                    }
-
-                    androidx.compose.material3.Divider(color = textColor.copy(alpha = 0.1f))
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                        modifier = Modifier.fillMaxWidth().height(230.dp).padding(bottom = 16.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.Top
                     ) {
                         Column(
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.weight(1f).fillMaxHeight(),
                             horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                            verticalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Box(modifier = Modifier.size(width = 48.dp, height = 32.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xFFF9F5EB)).border(1.dp, if(settings.contrastMode == ContrastMode.Normal) Color.Blue else Color.Transparent, RoundedCornerShape(12.dp)).clickable { viewModel.setContrastMode(ContrastMode.Normal) })
-                            Box(modifier = Modifier.size(width = 48.dp, height = 32.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xFF2C2C2C)).border(1.dp, if(settings.contrastMode == ContrastMode.Dark) Color.Blue else Color.Transparent, RoundedCornerShape(12.dp)).clickable { viewModel.setContrastMode(ContrastMode.Dark) })
-                            Box(modifier = Modifier.size(width = 48.dp, height = 32.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xFFFFFFFF)).border(1.dp, if(settings.contrastMode == ContrastMode.HighContrastLight) Color.Blue else Color.Gray, RoundedCornerShape(12.dp)).clickable { viewModel.setContrastMode(ContrastMode.HighContrastLight) })
-                            Box(modifier = Modifier.size(width = 48.dp, height = 32.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xFF000000)).border(1.dp, if(settings.contrastMode == ContrastMode.HighContrastDark) Color.Blue else Color.Gray, RoundedCornerShape(12.dp)).clickable { viewModel.setContrastMode(ContrastMode.HighContrastDark) })
-                            Box(modifier = Modifier.size(width = 48.dp, height = 32.dp).clip(RoundedCornerShape(12.dp)).border(1.dp, if(settings.contrastMode == ContrastMode.EInk) Color.Blue else Color.Gray, RoundedCornerShape(12.dp)).clickable { viewModel.setContrastMode(ContrastMode.EInk) }) {
+                            val contrastModifier = Modifier.size(width = 48.dp, height = 32.dp).clip(RoundedCornerShape(12.dp))
+                            Box(modifier = contrastModifier.background(Color(0xFFF9F5EB)).border(1.dp, if(settings.contrastMode == ContrastMode.Normal) Color.Blue else Color.Transparent, RoundedCornerShape(12.dp)).clickable { viewModel.setContrastMode(ContrastMode.Normal) })
+                            Box(modifier = contrastModifier.background(Color(0xFF2C2C2C)).border(1.dp, if(settings.contrastMode == ContrastMode.Dark) Color.Blue else Color.Transparent, RoundedCornerShape(12.dp)).clickable { viewModel.setContrastMode(ContrastMode.Dark) })
+                            Box(modifier = contrastModifier.background(Color(0xFFFFFFFF)).border(1.dp, if(settings.contrastMode == ContrastMode.HighContrastLight) Color.Blue else Color.Gray, RoundedCornerShape(12.dp)).clickable { viewModel.setContrastMode(ContrastMode.HighContrastLight) })
+                            Box(modifier = contrastModifier.background(Color(0xFF000000)).border(1.dp, if(settings.contrastMode == ContrastMode.HighContrastDark) Color.Blue else Color.Gray, RoundedCornerShape(12.dp)).clickable { viewModel.setContrastMode(ContrastMode.HighContrastDark) })
+                            Box(modifier = contrastModifier.border(1.dp, if(settings.contrastMode == ContrastMode.EInk) Color.Blue else Color.Gray, RoundedCornerShape(12.dp)).clickable { viewModel.setContrastMode(ContrastMode.EInk) }) {
                                 Row(modifier = Modifier.fillMaxSize()) {
                                     Box(modifier = Modifier.fillMaxHeight().weight(1f).background(Color(0xFFE0E0E0)))
                                     Box(modifier = Modifier.fillMaxHeight().weight(1f).background(Color(0xFFFFFFFF)))
@@ -1921,9 +1890,9 @@ fun ReaderScreen(
                             }
                         }
                         Column(
-                            modifier = Modifier.weight(2f),
+                            modifier = Modifier.weight(2f).fillMaxHeight(),
                             horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                            verticalArrangement = Arrangement.SpaceBetween
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                 Text("Font Size", style = MaterialTheme.typography.labelSmall, color = textColor.copy(alpha = 0.6f))
@@ -1934,6 +1903,14 @@ fun ReaderScreen(
                                 }
                             }
                             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text("Word Spacing", style = MaterialTheme.typography.labelSmall, color = textColor.copy(alpha = 0.6f))
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    IconButton(onClick = { viewModel.setWordSpacing((settings.wordSpacingMultiplier - 0.1f).coerceIn(0.5f, 3.0f)) }, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.Remove, contentDescription = "-", tint = textColor) }
+                                    Text("${(settings.wordSpacingMultiplier * 100).roundToInt()}%", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold), color = textColor, modifier = Modifier.width(48.dp), textAlign = TextAlign.Center)
+                                    IconButton(onClick = { viewModel.setWordSpacing((settings.wordSpacingMultiplier + 0.1f).coerceIn(0.5f, 3.0f)) }, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.Add, contentDescription = "+", tint = textColor) }
+                                }
+                            }
+                            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                 Text("Line Spacing", style = MaterialTheme.typography.labelSmall, color = textColor.copy(alpha = 0.6f))
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     IconButton(onClick = { viewModel.setLineSpacing((settings.lineSpacingMultiplier - 0.1f).coerceIn(0.5f, 3.0f)) }, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.Remove, contentDescription = "-", tint = textColor) }
@@ -1941,25 +1918,43 @@ fun ReaderScreen(
                                     IconButton(onClick = { viewModel.setLineSpacing((settings.lineSpacingMultiplier + 0.1f).coerceIn(0.5f, 3.0f)) }, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.Add, contentDescription = "+", tint = textColor) }
                                 }
                             }
+                            Spacer(modifier = Modifier.weight(1f))
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth(0.95f)
+                                    .height(64.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(textColor.copy(alpha = 0.08f))
+                            ) {
+                                Row(modifier = Modifier.fillMaxSize().padding(6.dp)) {
+                                    val activeColor = if (settings.contrastMode == ContrastMode.Dark) Color(0xFF9AB0E6) else MaterialTheme.colorScheme.primary
+                                    Box(modifier = Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(8.dp)).background(if (!settings.isHorizontalScroll) activeColor.copy(alpha = 0.2f) else Color.Transparent).clickable { viewModel.setHorizontalScroll(false) }, contentAlignment = Alignment.Center) { 
+                                        Icon(Icons.Default.SwapVert, contentDescription = "Vertical", tint = if (!settings.isHorizontalScroll) activeColor else textColor, modifier = Modifier.size(28.dp))
+                                    }
+                                    Box(modifier = Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(8.dp)).background(if (settings.isHorizontalScroll) activeColor.copy(alpha = 0.2f) else Color.Transparent).clickable { viewModel.setHorizontalScroll(true) }, contentAlignment = Alignment.Center) { 
+                                        Icon(Icons.Default.SwapHoriz, contentDescription = "Horizontal", tint = if (settings.isHorizontalScroll) activeColor else textColor, modifier = Modifier.size(28.dp))
+                                    }
+                                }
+                            }
                         }
                         Column(
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.weight(1f).fillMaxHeight(),
                             horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                            verticalArrangement = Arrangement.SpaceBetween
                         ) {
-                            IconButton(onClick = { viewModel.setWarmFilterActive(!settings.isWarmFilterActive) }, modifier = Modifier.border(width = if (settings.isWarmFilterActive) 2.dp else 0.dp, color = if (settings.isWarmFilterActive) Color(0xFFCC7722) else Color.Transparent, shape = RoundedCornerShape(8.dp)).padding(4.dp)) { Icon(Icons.Default.MenuBook, contentDescription = "Reading Mode", tint = if (settings.isWarmFilterActive) Color(0xFFCC7722) else textColor) }
+                            IconButton(onClick = { viewModel.setWarmFilterActive(!settings.isWarmFilterActive) }, modifier = Modifier.size(48.dp).border(width = if (settings.isWarmFilterActive) 2.dp else 0.dp, color = if (settings.isWarmFilterActive) Color(0xFFCC7722) else Color.Transparent, shape = RoundedCornerShape(8.dp)).padding(4.dp)) { Icon(Icons.Default.MenuBook, contentDescription = "Reading Mode", tint = if (settings.isWarmFilterActive) Color(0xFFCC7722) else textColor, modifier = Modifier.size(28.dp)) }
                             IconButton(onClick = { 
                                 viewModel.setReaderModeActive(!settings.isReaderModeActive)
                                 val activity = context as? android.app.Activity
                                 val windowInsetsController = androidx.core.view.WindowCompat.getInsetsController(activity!!.window, activity.window.decorView)
                                 if (!settings.isReaderModeActive) { windowInsetsController.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars()); windowInsetsController.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE } 
                                 else { windowInsetsController.show(androidx.core.view.WindowInsetsCompat.Type.systemBars()) }
-                            }) { Icon(imageVector = if (settings.isReaderModeActive) Icons.Default.FullscreenExit else Icons.Default.Fullscreen, contentDescription = "Immersive Mode", tint = if (settings.isReaderModeActive) MaterialTheme.colorScheme.primary else textColor, modifier = Modifier.size(if (settings.isReaderModeActive) 32.dp else 24.dp)) }
-                            IconButton(onClick = { viewModel.setFontBold(!settings.fontBold) }) { Text("B", fontWeight = if (settings.fontBold) FontWeight.Black else FontWeight.Normal, color = if (settings.fontBold) MaterialTheme.colorScheme.primary else textColor, fontSize = 20.sp) }
+                            }, modifier = Modifier.size(48.dp)) { Icon(imageVector = if (settings.isReaderModeActive) Icons.Default.FullscreenExit else Icons.Default.Fullscreen, contentDescription = "Immersive Mode", tint = if (settings.isReaderModeActive) MaterialTheme.colorScheme.primary else textColor, modifier = Modifier.size(if (settings.isReaderModeActive) 32.dp else 28.dp)) }
+                            IconButton(onClick = { viewModel.setFontBold(!settings.fontBold) }, modifier = Modifier.size(48.dp)) { Text("B", fontWeight = if (settings.fontBold) FontWeight.Black else FontWeight.Normal, color = if (settings.fontBold) MaterialTheme.colorScheme.primary else textColor, fontSize = 24.sp) }
                         }
                     }
-                    
-                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Spacer(modifier = Modifier.height(16.dp))
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -1968,91 +1963,48 @@ fun ReaderScreen(
                     ) {
                         val fonts = listOf(
                             "SansSerif" to FontFamily.SansSerif,
-                            "Serif" to FontFamily.Serif,
-                            "Monospace" to FontFamily.Monospace,
                             "Google Sans" to FontFamily(androidx.compose.ui.text.font.Font("fonts/google_sans.ttf", context.assets)),
-                            "Literata" to FontFamily(androidx.compose.ui.text.font.Font("fonts/literata.ttf", context.assets))
+                            "Literata" to FontFamily(androidx.compose.ui.text.font.Font("fonts/literata.ttf", context.assets)),
+                            "Serif" to FontFamily.Serif,
+                            "Monospace" to FontFamily.Monospace
                         )
                         fonts.forEach { (name, font) ->
                             val isSelected = settings.fontFamily == name
-                            Surface(
-                                onClick = { viewModel.setFontFamily(name) },
+                            Column(
                                 modifier = Modifier.weight(1f).padding(horizontal = 4.dp),
-                                shape = RoundedCornerShape(12.dp),
-                                color = if (isSelected) (if (settings.contrastMode == ContrastMode.Dark) Color(0xFF9AB0E6) else MaterialTheme.colorScheme.primary).copy(alpha = 0.15f) else Color.Transparent,
-                                border = BorderStroke(1.dp, if (isSelected) (if (settings.contrastMode == ContrastMode.Dark) Color(0xFF9AB0E6) else MaterialTheme.colorScheme.primary) else textColor.copy(alpha = 0.2f))
+                                horizontalAlignment = Alignment.CenterHorizontally
                             ) {
-                                Column(
-                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally
+                                Surface(
+                                    onClick = { viewModel.setFontFamily(name) },
+                                    modifier = Modifier.fillMaxWidth().aspectRatio(1f),
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (isSelected) (if (settings.contrastMode == ContrastMode.Dark) Color(0xFF5C5E8F) else MaterialTheme.colorScheme.primary) else Color.Transparent,
+                                    border = BorderStroke(1.dp, if (isSelected) (if (settings.contrastMode == ContrastMode.Dark) Color(0xFF5C5E8F) else MaterialTheme.colorScheme.primary) else textColor.copy(alpha = 0.3f))
                                 ) {
-                                    Text(text = "Aa", fontFamily = font, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal, color = if (isSelected) (if (settings.contrastMode == ContrastMode.Dark) Color(0xFF9AB0E6) else MaterialTheme.colorScheme.primary) else textColor, fontSize = 24.sp)
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(text = name.replace(" ", ""), fontFamily = FontFamily.Default, color = if (isSelected) (if (settings.contrastMode == ContrastMode.Dark) Color(0xFF9AB0E6) else MaterialTheme.colorScheme.primary) else textColor, fontSize = 10.sp, maxLines = 1)
+                                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                        Text(
+                                            text = "Aa", 
+                                            fontFamily = font, 
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal, 
+                                            color = if (isSelected) Color.White else textColor, 
+                                            fontSize = 24.sp
+                                        )
+                                    }
                                 }
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text("Scrolling Style", style = MaterialTheme.typography.labelSmall, color = textColor.copy(alpha = 0.6f))
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth(0.9f)
-                                .height(48.dp)
-                                .clip(RoundedCornerShape(24.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant)
-                                .border(1.dp, textColor.copy(alpha = 0.1f), RoundedCornerShape(24.dp)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Row(modifier = Modifier.fillMaxSize()) {
-                                Box(
-                                    modifier = Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(topStart = 24.dp, bottomStart = 24.dp)).background(if (!settings.isHorizontalScroll) MaterialTheme.colorScheme.primaryContainer else Color.Transparent).clickable { viewModel.setHorizontalScroll(false) },
-                                    contentAlignment = Alignment.Center
-                                ) { Text("Vertical", color = if (!settings.isHorizontalScroll) MaterialTheme.colorScheme.onPrimaryContainer else textColor, style = MaterialTheme.typography.labelMedium, fontWeight = if (!settings.isHorizontalScroll) FontWeight.Bold else FontWeight.Normal) }
-                                Box(
-                                    modifier = Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(topEnd = 24.dp, bottomEnd = 24.dp)).background(if (settings.isHorizontalScroll) MaterialTheme.colorScheme.primaryContainer else Color.Transparent).clickable { viewModel.setHorizontalScroll(true) },
-                                    contentAlignment = Alignment.Center
-                                ) { Text("Horizontal", color = if (settings.isHorizontalScroll) MaterialTheme.colorScheme.onPrimaryContainer else textColor, style = MaterialTheme.typography.labelMedium, fontWeight = if (settings.isHorizontalScroll) FontWeight.Bold else FontWeight.Normal) }
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    text = name.replace(" ", ""), 
+                                    fontFamily = FontFamily.Default, 
+                                    color = if (isSelected) textColor else textColor.copy(alpha = 0.7f), 
+                                    fontSize = 11.sp, 
+                                    maxLines = 1,
+                                    textAlign = TextAlign.Center
+                                )
                             }
                         }
                     }
                     
-                } else if (formatGroup == "PDF") {
-                    
-                    Column(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
-                        Row(horizontalArrangement = Arrangement.SpaceEvenly, modifier = Modifier.fillMaxWidth()) {
-                            IconButton(
-                                onClick = { viewModel.setReaderModeActive(!settings.isReaderModeActive) },
-                                modifier = Modifier.border(width = if (settings.isReaderModeActive) 2.dp else 0.dp, color = if (settings.isReaderModeActive) (if (settings.contrastMode == ContrastMode.Dark) Color(0xFF9AB0E6) else MaterialTheme.colorScheme.primary) else Color.Transparent, shape = RoundedCornerShape(8.dp)).padding(4.dp)
-                            ) { Icon(imageVector = Icons.Default.Fullscreen, contentDescription = "Immersive", tint = if (settings.isReaderModeActive) (if (settings.contrastMode == ContrastMode.Dark) Color(0xFF9AB0E6) else MaterialTheme.colorScheme.primary) else textColor) }
-                            IconButton(
-                                onClick = { viewModel.setWarmFilterActive(!settings.isWarmFilterActive) },
-                                modifier = Modifier.border(width = if (settings.isWarmFilterActive) 2.dp else 0.dp, color = if (settings.isWarmFilterActive) (if (settings.contrastMode == ContrastMode.Dark) Color(0xFF9AB0E6) else MaterialTheme.colorScheme.primary) else Color.Transparent, shape = RoundedCornerShape(8.dp)).padding(4.dp)
-                            ) { Icon(imageVector = Icons.Default.WbSunny, contentDescription = "Warm Filter", tint = if (settings.isWarmFilterActive) (if (settings.contrastMode == ContrastMode.Dark) Color(0xFF9AB0E6) else MaterialTheme.colorScheme.primary) else textColor) }
-                        }
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text("Scrolling Styles", style = MaterialTheme.typography.labelMedium, color = textColor.copy(alpha = 0.7f), modifier = Modifier.padding(start = 16.dp, bottom = 8.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(48.dp).background(textColor.copy(alpha = 0.1f), RoundedCornerShape(12.dp)),
-                            horizontalArrangement = Arrangement.Center
-                        ) {
-                            Box(modifier = Modifier.weight(1f).fillMaxHeight().padding(4.dp).background(if (!settings.isHorizontalScroll) (if (settings.contrastMode == ContrastMode.Dark) Color(0xFF9AB0E6) else MaterialTheme.colorScheme.primary).copy(alpha = 0.2f) else Color.Transparent, RoundedCornerShape(8.dp)).clickable { viewModel.setHorizontalScroll(false) }, contentAlignment = Alignment.Center) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) { Icon(imageVector = Icons.Default.SwapVert, contentDescription = "Vertical", tint = if (!settings.isHorizontalScroll) (if (settings.contrastMode == ContrastMode.Dark) Color(0xFF9AB0E6) else MaterialTheme.colorScheme.primary) else textColor); Text("Vertical", color = if (!settings.isHorizontalScroll) (if (settings.contrastMode == ContrastMode.Dark) Color(0xFF9AB0E6) else MaterialTheme.colorScheme.primary) else textColor, fontSize = 10.sp, fontWeight = FontWeight.Bold) }
-                            }
-                            Box(modifier = Modifier.weight(1f).fillMaxHeight().padding(4.dp).background(if (settings.isHorizontalScroll) (if (settings.contrastMode == ContrastMode.Dark) Color(0xFF9AB0E6) else MaterialTheme.colorScheme.primary).copy(alpha = 0.2f) else Color.Transparent, RoundedCornerShape(8.dp)).clickable { viewModel.setHorizontalScroll(true) }, contentAlignment = Alignment.Center) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) { Icon(imageVector = Icons.Default.SwapHoriz, contentDescription = "Horizontal", tint = if (settings.isHorizontalScroll) (if (settings.contrastMode == ContrastMode.Dark) Color(0xFF9AB0E6) else MaterialTheme.colorScheme.primary) else textColor); Text("Horizontal", color = if (settings.isHorizontalScroll) (if (settings.contrastMode == ContrastMode.Dark) Color(0xFF9AB0E6) else MaterialTheme.colorScheme.primary) else textColor, fontSize = 10.sp, fontWeight = FontWeight.Bold) }
-                            }
-                        }
-                    }
-
-                } else if (formatGroup == "CBZ_CBR_CB7") {
-                    
+                } else if (formatGroup == "PDF" || formatGroup == "CBZ_CBR_CB7") {
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
                         horizontalArrangement = Arrangement.SpaceEvenly,
@@ -2065,35 +2017,75 @@ fun ReaderScreen(
                         IconButton(onClick = { 
                             showSettingsSheet = false
                             viewModel.setShowAnnotationManager(true) 
-                        }) { Icon(Icons.Default.Search, contentDescription = "Search Comments", tint = textColor) }
+                        }) { Icon(Icons.Default.Search, contentDescription = "Search Annotations", tint = textColor) }
                     }
-                    
-                    Column(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
-                        Row(horizontalArrangement = Arrangement.SpaceEvenly, modifier = Modifier.fillMaxWidth()) {
-                            IconButton(
-                                onClick = { viewModel.setReaderModeActive(!settings.isReaderModeActive) },
-                                modifier = Modifier.border(width = if (settings.isReaderModeActive) 2.dp else 0.dp, color = if (settings.isReaderModeActive) (if (settings.contrastMode == ContrastMode.Dark) Color(0xFF9AB0E6) else MaterialTheme.colorScheme.primary) else Color.Transparent, shape = RoundedCornerShape(8.dp)).padding(4.dp)
-                            ) { Icon(imageVector = Icons.Default.Fullscreen, contentDescription = "Immersive", tint = if (settings.isReaderModeActive) (if (settings.contrastMode == ContrastMode.Dark) Color(0xFF9AB0E6) else MaterialTheme.colorScheme.primary) else textColor) }
-                            IconButton(
-                                onClick = { viewModel.setWarmFilterActive(!settings.isWarmFilterActive) },
-                                modifier = Modifier.border(width = if (settings.isWarmFilterActive) 2.dp else 0.dp, color = if (settings.isWarmFilterActive) (if (settings.contrastMode == ContrastMode.Dark) Color(0xFF9AB0E6) else MaterialTheme.colorScheme.primary) else Color.Transparent, shape = RoundedCornerShape(8.dp)).padding(4.dp)
-                            ) { Icon(imageVector = Icons.Default.WbSunny, contentDescription = "Warm Filter", tint = if (settings.isWarmFilterActive) (if (settings.contrastMode == ContrastMode.Dark) Color(0xFF9AB0E6) else MaterialTheme.colorScheme.primary) else textColor) }
-                            IconButton(
-                                onClick = { viewModel.setNegative(!settings.isNegative) },
-                                modifier = Modifier.border(width = if (settings.isNegative) 2.dp else 0.dp, color = if (settings.isNegative) (if (settings.contrastMode == ContrastMode.Dark) Color(0xFF9AB0E6) else MaterialTheme.colorScheme.primary) else Color.Transparent, shape = RoundedCornerShape(8.dp)).padding(4.dp)
-                            ) { Icon(imageVector = Icons.Default.NightsStay, contentDescription = "Negative Filter", tint = if (settings.isNegative) (if (settings.contrastMode == ContrastMode.Dark) Color(0xFF9AB0E6) else MaterialTheme.colorScheme.primary) else textColor) }
-                        }
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text("Scrolling Styles", style = MaterialTheme.typography.labelMedium, color = textColor.copy(alpha = 0.7f), modifier = Modifier.padding(start = 16.dp, bottom = 8.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(48.dp).background(textColor.copy(alpha = 0.1f), RoundedCornerShape(12.dp)),
-                            horizontalArrangement = Arrangement.Center
-                        ) {
-                            Box(modifier = Modifier.weight(1f).fillMaxHeight().padding(4.dp).background(if (!settings.isHorizontalScroll) (if (settings.contrastMode == ContrastMode.Dark) Color(0xFF9AB0E6) else MaterialTheme.colorScheme.primary).copy(alpha = 0.2f) else Color.Transparent, RoundedCornerShape(8.dp)).clickable { viewModel.setHorizontalScroll(false) }, contentAlignment = Alignment.Center) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) { Icon(imageVector = Icons.Default.SwapVert, contentDescription = "Vertical", tint = if (!settings.isHorizontalScroll) (if (settings.contrastMode == ContrastMode.Dark) Color(0xFF9AB0E6) else MaterialTheme.colorScheme.primary) else textColor); Text("Vertical", color = if (!settings.isHorizontalScroll) (if (settings.contrastMode == ContrastMode.Dark) Color(0xFF9AB0E6) else MaterialTheme.colorScheme.primary) else textColor, fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+
+                    androidx.compose.material3.Divider(color = textColor.copy(alpha = 0.1f))
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(modifier = Modifier.size(width = 48.dp, height = 32.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xFFF9F5EB)).border(1.dp, if(settings.contrastMode == ContrastMode.Normal) Color.Blue else Color.Transparent, RoundedCornerShape(12.dp)).clickable { viewModel.setContrastMode(ContrastMode.Normal) })
+                        Box(modifier = Modifier.size(width = 48.dp, height = 32.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xFF2C2C2C)).border(1.dp, if(settings.contrastMode == ContrastMode.Dark) Color.Blue else Color.Transparent, RoundedCornerShape(12.dp)).clickable { viewModel.setContrastMode(ContrastMode.Dark) })
+                        Box(modifier = Modifier.size(width = 48.dp, height = 32.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xFFFFFFFF)).border(1.dp, if(settings.contrastMode == ContrastMode.HighContrastLight) Color.Blue else Color.Gray, RoundedCornerShape(12.dp)).clickable { viewModel.setContrastMode(ContrastMode.HighContrastLight) })
+                        Box(modifier = Modifier.size(width = 48.dp, height = 32.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xFF000000)).border(1.dp, if(settings.contrastMode == ContrastMode.HighContrastDark) Color.Blue else Color.Gray, RoundedCornerShape(12.dp)).clickable { viewModel.setContrastMode(ContrastMode.HighContrastDark) })
+                        Box(modifier = Modifier.size(width = 48.dp, height = 32.dp).clip(RoundedCornerShape(12.dp)).border(1.dp, if(settings.contrastMode == ContrastMode.EInk) Color.Blue else Color.Gray, RoundedCornerShape(12.dp)).clickable { viewModel.setContrastMode(ContrastMode.EInk) }) {
+                            Row(modifier = Modifier.fillMaxSize()) {
+                                Box(modifier = Modifier.fillMaxHeight().weight(1f).background(Color(0xFFE0E0E0)))
+                                Box(modifier = Modifier.fillMaxHeight().weight(1f).background(Color(0xFFFFFFFF)))
                             }
-                            Box(modifier = Modifier.weight(1f).fillMaxHeight().padding(4.dp).background(if (settings.isHorizontalScroll) (if (settings.contrastMode == ContrastMode.Dark) Color(0xFF9AB0E6) else MaterialTheme.colorScheme.primary).copy(alpha = 0.2f) else Color.Transparent, RoundedCornerShape(8.dp)).clickable { viewModel.setHorizontalScroll(true) }, contentAlignment = Alignment.Center) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) { Icon(imageVector = Icons.Default.SwapHoriz, contentDescription = "Horizontal", tint = if (settings.isHorizontalScroll) (if (settings.contrastMode == ContrastMode.Dark) Color(0xFF9AB0E6) else MaterialTheme.colorScheme.primary) else textColor); Text("Horizontal", color = if (settings.isHorizontalScroll) (if (settings.contrastMode == ContrastMode.Dark) Color(0xFF9AB0E6) else MaterialTheme.colorScheme.primary) else textColor, fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        val primaryColor = MaterialTheme.colorScheme.primary
+                        IconButton(onClick = { viewModel.setNegative(!settings.isNegative) }, modifier = Modifier.size(48.dp)) {
+                            Canvas(modifier = Modifier.size(32.dp)) {
+                                drawRect(color = if (settings.isNegative) primaryColor else textColor)
+                                drawCircle(color = barColor, radius = size.minDimension * 0.3f)
+                                drawRect(color = barColor.copy(alpha = 0.15f), size = size / 2f)
+                            }
+                        }
+                        IconButton(onClick = { 
+                            viewModel.setReaderModeActive(!settings.isReaderModeActive)
+                            val activity = context as? android.app.Activity
+                            val windowInsetsController = androidx.core.view.WindowCompat.getInsetsController(activity!!.window, activity.window.decorView)
+                            if (!settings.isReaderModeActive) { windowInsetsController.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars()); windowInsetsController.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE } 
+                            else { windowInsetsController.show(androidx.core.view.WindowInsetsCompat.Type.systemBars()) }
+                        }, modifier = Modifier.size(48.dp)) { Icon(imageVector = if (settings.isReaderModeActive) Icons.Default.FullscreenExit else Icons.Default.Fullscreen, contentDescription = "Immersive Mode", tint = if (settings.isReaderModeActive) MaterialTheme.colorScheme.primary else textColor, modifier = Modifier.size(if (settings.isReaderModeActive) 32.dp else 28.dp)) }
+                        IconButton(onClick = { viewModel.setWarmFilterActive(!settings.isWarmFilterActive) }, modifier = Modifier.size(48.dp).border(width = if (settings.isWarmFilterActive) 2.dp else 0.dp, color = if (settings.isWarmFilterActive) Color(0xFFCC7722) else Color.Transparent, shape = RoundedCornerShape(8.dp)).padding(4.dp)) { Icon(Icons.Default.MenuBook, contentDescription = "Reading Mode", tint = if (settings.isWarmFilterActive) Color(0xFFCC7722) else textColor, modifier = Modifier.size(28.dp)) }
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                            .height(72.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(textColor.copy(alpha = 0.08f))
+                    ) {
+                        Row(modifier = Modifier.fillMaxSize().padding(6.dp)) {
+                            val activeColor = if (settings.contrastMode == ContrastMode.Dark) Color(0xFF9AB0E6) else MaterialTheme.colorScheme.primary
+                            Box(modifier = Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(12.dp)).background(if (!settings.isHorizontalScroll) activeColor.copy(alpha = 0.2f) else Color.Transparent).clickable { viewModel.setHorizontalScroll(false) }, contentAlignment = Alignment.Center) { 
+                                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                                    Icon(Icons.Default.SwapVert, contentDescription = "Vertical", tint = if (!settings.isHorizontalScroll) activeColor else textColor, modifier = Modifier.size(24.dp))
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text("Vertical", color = if (!settings.isHorizontalScroll) activeColor else textColor, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            Box(modifier = Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(12.dp)).background(if (settings.isHorizontalScroll) activeColor.copy(alpha = 0.2f) else Color.Transparent).clickable { viewModel.setHorizontalScroll(true) }, contentAlignment = Alignment.Center) { 
+                                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                                    Icon(Icons.Default.SwapHoriz, contentDescription = "Horizontal", tint = if (settings.isHorizontalScroll) activeColor else textColor, modifier = Modifier.size(24.dp))
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text("Horizontal", color = if (settings.isHorizontalScroll) activeColor else textColor, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                }
                             }
                         }
                     }
@@ -2148,5 +2140,4 @@ fun ReaderScreen(
         )
     }
 
-}
 }

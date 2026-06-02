@@ -69,6 +69,18 @@ data class ChecklistItemMatch(
     val item: ChecklistItem
 )
 
+fun getSectionDisplayName(sectionName: String): String {
+    return when (sectionName) {
+        "EPUB" -> "Ebooks"
+        "TXT" -> "Text"
+        "CBZ", "CBR", "CB7" -> "Comic/Manga"
+        "CODING" -> "Coding"
+        "IMAGE" -> "Images"
+        "PDF" -> "PDF"
+        else -> sectionName
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun HomeScreen(
@@ -105,6 +117,9 @@ fun HomeScreen(
     }
     
     var contextMenuFile by remember { mutableStateOf<LibraryFile?>(null) }
+    var downloadDialogFile by remember { mutableStateOf<LibraryFile?>(null) }
+    var formatSelectionDialogFile by remember { mutableStateOf<LibraryFile?>(null) }
+    var formatSelectionDialogIsShare by remember { mutableStateOf(false) }
     var contextMenuChecklist by remember { mutableStateOf<Checklist?>(null) }
     var activeChecklistId by remember { mutableStateOf<Int?>(null) }
     
@@ -444,7 +459,7 @@ fun HomeScreen(
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .animateItemPlacement()
+                                        .then(if (isDraggingThis) Modifier else Modifier.animateItemPlacement())
                                         .graphicsLayer {
                                             this.translationY = translationY
                                             this.shadowElevation = if (isDraggingThis) 8.dp.toPx() else 0f
@@ -470,6 +485,7 @@ fun HomeScreen(
                                                         onDragEnd = {
                                                             draggedSectionIndex = null
                                                             dragOffsetY = 0f
+                                                            saveSectionOrder(sectionOrder)
                                                         },
                                                         onDragCancel = {
                                                             draggedSectionIndex = null
@@ -487,18 +503,16 @@ fun HomeScreen(
                                                                     newList[currentIndex] = newList[currentIndex + 1]
                                                                     newList[currentIndex + 1] = temp
                                                                     sectionOrder = newList
-                                                                    saveSectionOrder(newList)
                                                                     draggedSectionIndex = currentIndex + 1
-                                                                    dragOffsetY -= thresholdPx * 2.5f
+                                                                    dragOffsetY = 0f
                                                                 } else if (dragOffsetY < -thresholdPx && currentIndex > 0) {
                                                                     val newList = sectionOrder.toMutableList()
                                                                     val temp = newList[currentIndex]
                                                                     newList[currentIndex] = newList[currentIndex - 1]
                                                                     newList[currentIndex - 1] = temp
                                                                     sectionOrder = newList
-                                                                    saveSectionOrder(newList)
                                                                     draggedSectionIndex = currentIndex - 1
-                                                                    dragOffsetY += thresholdPx * 2.5f
+                                                                    dragOffsetY = 0f
                                                                 }
                                                             }
                                                         }
@@ -506,7 +520,7 @@ fun HomeScreen(
                                                 }
                                             )
                                             Text(
-                                                text = sectionName,
+                                                text = getSectionDisplayName(sectionName),
                                                 style = MaterialTheme.typography.labelMedium.copy(
                                                     fontWeight = FontWeight.Bold,
                                                     color = MaterialTheme.colorScheme.primary
@@ -1127,7 +1141,7 @@ fun HomeScreen(
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .animateItemPlacement()
+                                    .then(if (isDraggingThis) Modifier else Modifier.animateItemPlacement())
                                     .graphicsLayer {
                                         this.translationY = translationY
                                         this.shadowElevation = if (isDraggingThis) 8.dp.toPx() else 0f
@@ -1161,6 +1175,7 @@ fun HomeScreen(
                                                                 onDragEnd = {
                                                                     draggedSectionIndex = null
                                                                     dragOffsetY = 0f
+                                                                    saveSectionOrder(sectionOrder)
                                                                 },
                                                                 onDragCancel = {
                                                                     draggedSectionIndex = null
@@ -1178,18 +1193,16 @@ fun HomeScreen(
                                                                             newList[currentIndex] = newList[currentIndex + 1]
                                                                             newList[currentIndex + 1] = temp
                                                                             sectionOrder = newList
-                                                                            saveSectionOrder(newList)
                                                                             draggedSectionIndex = currentIndex + 1
-                                                                            dragOffsetY -= thresholdPx
+                                                                            dragOffsetY = 0f
                                                                         } else if (dragOffsetY < -thresholdPx && currentIndex > 0) {
                                                                             val newList = sectionOrder.toMutableList()
                                                                             val temp = newList[currentIndex]
                                                                             newList[currentIndex] = newList[currentIndex - 1]
                                                                             newList[currentIndex - 1] = temp
                                                                             sectionOrder = newList
-                                                                            saveSectionOrder(newList)
                                                                             draggedSectionIndex = currentIndex - 1
-                                                                            dragOffsetY += thresholdPx
+                                                                            dragOffsetY = 0f
                                                                         }
                                                                     }
                                                                 }
@@ -1349,7 +1362,7 @@ fun HomeScreen(
                                                                         sectionOrder = newList
                                                                         saveSectionOrder(newList)
                                                                         draggedSectionIndex = currentIndex + 1
-                                                                        dragOffsetY -= thresholdPx * 2.5f
+                                                                        dragOffsetY = 0f
                                                                     } else if (dragOffsetY < -thresholdPx && currentIndex > 0) {
                                                                         val newList = sectionOrder.toMutableList()
                                                                         val temp = newList[currentIndex]
@@ -1358,7 +1371,7 @@ fun HomeScreen(
                                                                         sectionOrder = newList
                                                                         saveSectionOrder(newList)
                                                                         draggedSectionIndex = currentIndex - 1
-                                                                        dragOffsetY += thresholdPx * 2.5f
+                                                                        dragOffsetY = 0f
                                                                     }
                                                                 }
                                                             }
@@ -1366,7 +1379,7 @@ fun HomeScreen(
                                                     }
                                             )
                                             Text(
-                                                text = sectionName,
+                                                text = getSectionDisplayName(sectionName),
                                                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                                                 color = MaterialTheme.colorScheme.onBackground
                                             )
@@ -1775,6 +1788,32 @@ fun HomeScreen(
                     )
                 }
                 ListItem(
+                    headlineContent = { Text("Share File", color = MaterialTheme.colorScheme.primary) },
+                    leadingContent = { Icon(Icons.Default.Share, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                    modifier = Modifier.clickable { 
+                        if (contextMenuFile!!.format == "CODING") {
+                            formatSelectionDialogFile = contextMenuFile
+                            formatSelectionDialogIsShare = true
+                        } else {
+                            viewModel.exportFile(context, contextMenuFile!!, modified = false) // Add normal share if needed later, or ignore
+                        }
+                        contextMenuFile = null
+                    }
+                )
+                ListItem(
+                    headlineContent = { Text("Download File", color = MaterialTheme.colorScheme.primary) },
+                    leadingContent = { Icon(Icons.Default.Download, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                    modifier = Modifier.clickable { 
+                        if (contextMenuFile!!.format == "CODING") {
+                            formatSelectionDialogFile = contextMenuFile
+                            formatSelectionDialogIsShare = false
+                        } else {
+                            downloadDialogFile = contextMenuFile
+                        }
+                        contextMenuFile = null
+                    }
+                )
+                ListItem(
                     headlineContent = { Text("Delete File", color = MaterialTheme.colorScheme.error) },
                     leadingContent = { Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
                     modifier = Modifier.clickable { 
@@ -2041,7 +2080,7 @@ fun HomeScreen(
     if (isConverting) {
         AlertDialog(
             onDismissRequest = { /* Cannot dismiss without action */ },
-            title = { Text("Converting to EPUB") },
+            title = { Text("Converting...") },
             text = {
                 Column {
                     Text(convertingFileName ?: "Unknown file")
@@ -2071,6 +2110,61 @@ fun HomeScreen(
             dismissButton = {
                 TextButton(onClick = { viewModel.cancelConversion() }) {
                     Text("Cancel", color = MaterialTheme.colorScheme.error)
+                }
+            }
+        )
+    }
+
+    if (downloadDialogFile != null) {
+        AlertDialog(
+            onDismissRequest = { downloadDialogFile = null },
+            title = { Text("Download") },
+            text = { Text("Choose a download option for ${downloadDialogFile!!.title}") },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.exportFile(context, downloadDialogFile!!, modified = true)
+                    downloadDialogFile = null
+                }) {
+                    Text("With Modifications")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    viewModel.exportFile(context, downloadDialogFile!!, modified = false)
+                    downloadDialogFile = null
+                }) {
+                    Text("Original")
+                }
+            }
+        )
+    }
+
+    if (formatSelectionDialogFile != null) {
+        val actionType = if (formatSelectionDialogIsShare) "Share" else "Download"
+        AlertDialog(
+            onDismissRequest = { formatSelectionDialogFile = null },
+            title = { Text(actionType) },
+            text = {
+                Column {
+                    Text("Select format for ${formatSelectionDialogFile!!.title}:")
+                    Spacer(modifier = Modifier.height(8.dp))
+                    listOf("PDF", "TXT", "IMG(JPG)").forEach { format ->
+                        TextButton(
+                            onClick = {
+                                viewModel.convertCodeFile(context, formatSelectionDialogFile!!, format, formatSelectionDialogIsShare)
+                                formatSelectionDialogFile = null
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(format)
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { formatSelectionDialogFile = null }) {
+                    Text("Cancel")
                 }
             }
         )
