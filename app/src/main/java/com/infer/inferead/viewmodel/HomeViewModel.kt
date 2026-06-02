@@ -42,6 +42,20 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             initialValue = emptyList()
         )
 
+    val bookshelves: StateFlow<List<com.infer.inferead.data.Bookshelf>> = repository.getAllBookshelves()
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
+
+    val bookshelfItems: StateFlow<List<com.infer.inferead.data.BookshelfItem>> = repository.getAllBookshelfItems()
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
+
     val currentUser: StateFlow<User?> = dao.getUser()
         .stateIn(
             scope = viewModelScope,
@@ -609,6 +623,64 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                 _isConverting.value = false
                 _convertingFileName.value = null
             }
+        }
+    }
+
+    // Bookshelf Operations
+    fun createBookshelf(name: String, colorHex: String, autoAddFileId: Int? = null) {
+        viewModelScope.launch {
+            val id = repository.createBookshelf(name, colorHex)
+            if (autoAddFileId != null) {
+                repository.addFileToBookshelf(id.toInt(), autoAddFileId)
+            }
+        }
+    }
+
+    fun renameBookshelf(id: Int, name: String) {
+        viewModelScope.launch {
+            repository.renameBookshelf(id, name)
+        }
+    }
+
+    fun updateBookshelfColor(id: Int, colorHex: String) {
+        viewModelScope.launch {
+            repository.updateBookshelfColor(id, colorHex)
+        }
+    }
+
+    fun deleteBookshelf(id: Int) {
+        viewModelScope.launch {
+            repository.deleteBookshelf(id)
+        }
+    }
+
+    fun updateBookshelfMinimised(id: Int, isMinimised: Boolean) {
+        viewModelScope.launch {
+            repository.updateBookshelfMinimised(id, isMinimised)
+        }
+    }
+
+    fun updateBookshelvesOrder(bookshelves: List<com.infer.inferead.data.Bookshelf>) {
+        viewModelScope.launch {
+            repository.updateBookshelvesOrder(bookshelves)
+        }
+    }
+
+    fun addFileToBookshelf(bookshelfId: Int, fileId: Int) {
+        viewModelScope.launch {
+            repository.addFileToBookshelf(bookshelfId, fileId)
+        }
+    }
+
+    fun removeFileFromBookshelf(bookshelfId: Int, fileId: Int) {
+        viewModelScope.launch {
+            repository.removeFileFromBookshelf(bookshelfId, fileId)
+        }
+    }
+
+    fun updateBookshelfItemsOrder(items: List<com.infer.inferead.data.BookshelfItem>) {
+        viewModelScope.launch {
+            repository.updateBookshelfItemsOrder(items)
         }
     }
 }

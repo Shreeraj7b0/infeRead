@@ -5,6 +5,7 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.first
 import java.io.File
 import java.io.FileOutputStream
 
@@ -263,5 +264,53 @@ class FileRepository(private val context: Context, private val dao: InfeReadDao)
             }
         }
         return inSampleSize
+    }
+
+    // Bookshelf operations
+    fun getAllBookshelves() = dao.getAllBookshelves()
+    fun getAllBookshelfItems() = dao.getAllBookshelfItems()
+
+    suspend fun createBookshelf(name: String, colorHex: String): Long = withContext(Dispatchers.IO) {
+        val count = dao.getAllBookshelves().first().size
+        dao.insertBookshelf(Bookshelf(name = name, colorHex = colorHex, sortOrder = count))
+    }
+
+    suspend fun renameBookshelf(id: Int, name: String) = withContext(Dispatchers.IO) {
+        dao.renameBookshelf(id, name)
+    }
+
+    suspend fun updateBookshelfColor(id: Int, colorHex: String) = withContext(Dispatchers.IO) {
+        dao.updateBookshelfColor(id, colorHex)
+    }
+
+    suspend fun deleteBookshelf(id: Int) = withContext(Dispatchers.IO) {
+        dao.deleteBookshelf(id)
+        dao.clearBookshelfItems(id)
+    }
+
+    suspend fun updateBookshelfMinimised(id: Int, isMinimised: Boolean) = withContext(Dispatchers.IO) {
+        dao.updateBookshelfMinimised(id, isMinimised)
+    }
+
+    suspend fun updateBookshelvesOrder(bookshelves: List<Bookshelf>) = withContext(Dispatchers.IO) {
+        bookshelves.forEachIndexed { index, shelf ->
+            dao.updateBookshelfSortOrder(shelf.id, index)
+        }
+    }
+
+    suspend fun addFileToBookshelf(bookshelfId: Int, fileId: Int) = withContext(Dispatchers.IO) {
+        val items = dao.getAllBookshelfItems().first().filter { it.bookshelfId == bookshelfId }
+        val maxSort = items.maxOfOrNull { it.sortOrder } ?: -1
+        dao.insertBookshelfItem(BookshelfItem(bookshelfId = bookshelfId, fileId = fileId, sortOrder = maxSort + 1))
+    }
+
+    suspend fun removeFileFromBookshelf(bookshelfId: Int, fileId: Int) = withContext(Dispatchers.IO) {
+        dao.deleteBookshelfItemByFile(bookshelfId, fileId)
+    }
+
+    suspend fun updateBookshelfItemsOrder(items: List<BookshelfItem>) = withContext(Dispatchers.IO) {
+        items.forEachIndexed { index, item ->
+            dao.updateBookshelfItemSortOrder(item.id, index)
+        }
     }
 }

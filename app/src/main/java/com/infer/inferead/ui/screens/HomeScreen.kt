@@ -116,6 +116,13 @@ fun HomeScreen(
         )
     }
     
+    var activeTab by remember { mutableIntStateOf(homePrefs.getInt("active_tab", 0)) }
+    val bookshelves by viewModel.bookshelves.collectAsState()
+    val bookshelfItems by viewModel.bookshelfItems.collectAsState()
+    var isBookshelfAssignmentMode by remember { mutableStateOf(false) }
+    var bookshelfSortMode by remember { mutableIntStateOf(homePrefs.getInt("bookshelf_sort_mode", 0)) } // 0: Alpha Asc, 1: Alpha Desc, 2: Count Asc, 3: Count Desc
+    var bookshelfViewMode by remember { mutableIntStateOf(homePrefs.getInt("bookshelf_view_mode", 0)) } // 0: Shelf Stack, 1: Vertical Stack
+
     var contextMenuFile by remember { mutableStateOf<LibraryFile?>(null) }
     var downloadDialogFile by remember { mutableStateOf<LibraryFile?>(null) }
     var formatSelectionDialogFile by remember { mutableStateOf<LibraryFile?>(null) }
@@ -445,7 +452,8 @@ fun HomeScreen(
                             Spacer(modifier = Modifier.height(2.dp))
                         }
                         
-                        items(sectionOrder.filter { it != "Checklists" }, key = { "nav_$it" }) { sectionName ->
+                        if (activeTab == 0) {
+                            items(sectionOrder.filter { it != "Checklists" }, key = { "nav_$it" }) { sectionName ->
                             val filesForCategory = groupedFiles[sectionName] ?: emptyList()
                             if (filesForCategory.isNotEmpty()) {
                                 val isCategoryMinimised = minimisedSections.contains(sectionName)
@@ -594,7 +602,92 @@ fun HomeScreen(
                                     }
                                 }
                             }
+                            }
+                        } else if (activeTab == 1) {
+                            items(bookshelves.sortedBy { it.sortOrder }, key = { "nav_bookshelf_${it.id}" }) { shelf ->
+                                val itemsInShelf = bookshelfItems.filter { it.bookshelfId == shelf.id }
+                                val shelfFiles = itemsInShelf.mapNotNull { bItem -> libraryFiles.find { it.id == bItem.fileId } }
+                                val shelfColor = try { Color(android.graphics.Color.parseColor(shelf.colorHex)) } catch(e:Exception){ MaterialTheme.colorScheme.primary }
+                                
+                                Column(modifier = Modifier.fillMaxWidth()) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        var shelfDragOffsetY by remember { mutableStateOf(0f) }
+                                        Icon(
+                                            imageVector = Icons.Default.DragIndicator, 
+                                            contentDescription = "Drag to reorder", 
+                                            tint = MaterialTheme.colorScheme.onBackground.copy(alpha=0.3f), 
+                                            modifier = Modifier.size(20.dp).pointerInput(shelf.id) {
+                                                detectDragGesturesAfterLongPress(
+                                                    onDragStart = { shelfDragOffsetY = 0f },
+                                                    onDragEnd = { shelfDragOffsetY = 0f },
+                                                    onDragCancel = { shelfDragOffsetY = 0f },
+                                                    onDrag = { change, amount -> 
+                                                        change.consume()
+                                                        shelfDragOffsetY += amount.y
+                                                        
+                                                        val sortedShelves = bookshelves.sortedBy { it.sortOrder }
+                                                        val currentIndex = sortedShelves.indexOfFirst { it.id == shelf.id }
+                                                        if (currentIndex != -1) {
+                                                            val newIndex = if (shelfDragOffsetY > 100f && currentIndex < sortedShelves.size - 1) {
+                                                                shelfDragOffsetY = 0f; currentIndex + 1
+                                                            } else if (shelfDragOffsetY < -100f && currentIndex > 0) {
+                                                                shelfDragOffsetY = 0f; currentIndex - 1
+                                                            } else currentIndex
+                                                            
+                                                            if (currentIndex != newIndex) {
+                                                                val mutableShelves = sortedShelves.toMutableList()
+                                                                val removed = mutableShelves.removeAt(currentIndex)
+                                                                mutableShelves.add(newIndex, removed)
+                                                                viewModel.updateBookshelvesOrder(mutableShelves.mapIndexed { index, s -> s.copy(sortOrder = index) })
+                                                            }
+                                                        }
+                                                    }
+                                                )
+                                            }
+                                        )
+                                        Text(
+                                            text = shelf.name,
+                                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, color = shelfColor),
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        var isMinimised by remember { mutableStateOf(shelf.isMinimised) }
+                                        Box(
+                                            modifier = Modifier
+                                                .size(24.dp)
+                                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), CircleShape)
+                                                .clickable { isMinimised = !isMinimised; viewModel.updateBookshelfMinimised(shelf.id, isMinimised) },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(if (isMinimised) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowUp, null, tint = shelfColor, modifier = Modifier.size(16.dp))
+                                        }
+                                    }
+                                    AnimatedVisibility(visible = !shelf.isMinimised) {
+                                        Column(modifier = Modifier.fillMaxWidth()) {
+                                            shelfFiles.forEach { file ->
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth().height(36.dp).clip(RoundedCornerShape(6.dp))
+                                                        .combinedClickable(
+                                                            onClick = { onNavigateToReader(file.id); scope.launch { drawerState.close() } },
+                                                            onLongClick = { contextMenuFile = file }
+                                                        ).padding(horizontal = 8.dp, vertical = 6.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                ) {
+                                                    Icon(Icons.Default.Description, null, tint = shelfColor.copy(alpha=0.7f), modifier = Modifier.size(16.dp))
+                                                    Text(file.title, style = MaterialTheme.typography.bodySmall.copy(fontSize=13.sp), color = MaterialTheme.colorScheme.onBackground.copy(alpha=0.7f), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                                                }
+                                                Spacer(Modifier.height(4.dp))
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
+
                         // Special section: Bookmarked Files
                         val bookmarkedFiles = libraryFiles.filter { it.isBookmarked }
                         if (bookmarkedFiles.isNotEmpty()) {
@@ -694,21 +787,50 @@ fun HomeScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.End
+                            .padding(horizontal = 8.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
+                        // Compact Tab Toggle
+                        Row(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                                .padding(4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(50))
+                                    .background(if (activeTab == 0) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
+                                    .clickable { activeTab = 0; homePrefs.edit().putInt("active_tab", 0).apply() }
+                                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                            ) {
+                                Text("Library", style = MaterialTheme.typography.labelMedium.copy(fontWeight = if (activeTab == 0) FontWeight.Bold else FontWeight.Normal, color = if (activeTab == 0) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface))
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(50))
+                                    .background(if (activeTab == 1) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
+                                    .clickable { activeTab = 1; homePrefs.edit().putInt("active_tab", 1).apply() }
+                                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                            ) {
+                                Text("BookShelf", style = MaterialTheme.typography.labelMedium.copy(fontWeight = if (activeTab == 1) FontWeight.Bold else FontWeight.Normal, color = if (activeTab == 1) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface))
+                            }
+                        }
+
                         IconButton(
                             onClick = { 
                                 scope.launch { drawerState.close() }
                                 onNavigateToSettings()
                             },
-                            modifier = Modifier.size(48.dp)
+                            modifier = Modifier.size(40.dp)
                         ) {
                             Icon(
                                 Icons.Default.Settings,
                                 contentDescription = "Settings",
                                 tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(28.dp)
+                                modifier = Modifier.size(24.dp)
                             )
                         }
                     }
@@ -719,28 +841,47 @@ fun HomeScreen(
     ) {
         Scaffold(
             topBar = {
-                CenterAlignedTopAppBar(
-                    title = { 
-                        Text("infeRead", fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onBackground) 
-                    },
-                    navigationIcon = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                                Icon(Icons.Default.Menu, contentDescription = "Menu", tint = MaterialTheme.colorScheme.primary)
+                Column {
+                    CenterAlignedTopAppBar(
+                        title = { 
+                            Text("infeRead", fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onBackground) 
+                        },
+                        navigationIcon = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                                    Icon(Icons.Default.Menu, contentDescription = "Menu", tint = MaterialTheme.colorScheme.primary)
+                                }
+                                val toggleTheme = com.infer.inferead.LocalThemeToggle.current
+                                TextButton(onClick = { toggleTheme() }) {
+                                    Text("🌓", fontSize = 18.sp)
+                                }
                             }
-                            val toggleTheme = com.infer.inferead.LocalThemeToggle.current
-                            TextButton(onClick = { toggleTheme() }) {
-                                Text("🌓", fontSize = 18.sp)
+                        },
+                        actions = {
+                            IconButton(onClick = { onNavigateToSettings() }) {
+                                Icon(Icons.Default.Settings, contentDescription = "Settings", tint = MaterialTheme.colorScheme.primary)
                             }
-                        }
-                    },
-                    actions = {
-                        IconButton(onClick = { onNavigateToSettings() }) {
-                            Icon(Icons.Default.Settings, contentDescription = "Settings", tint = MaterialTheme.colorScheme.primary)
-                        }
-                    },
-                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = Color.Transparent)
-                )
+                        },
+                        colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = Color.Transparent)
+                    )
+                    TabRow(
+                        selectedTabIndex = activeTab,
+                        containerColor = Color.Transparent,
+                        contentColor = MaterialTheme.colorScheme.primary,
+                        divider = { Divider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)) }
+                    ) {
+                        Tab(
+                            selected = activeTab == 0,
+                            onClick = { activeTab = 0; homePrefs.edit().putInt("active_tab", 0).apply() },
+                            text = { Text("Library", fontWeight = if (activeTab == 0) FontWeight.Bold else FontWeight.Normal) }
+                        )
+                        Tab(
+                            selected = activeTab == 1,
+                            onClick = { activeTab = 1; homePrefs.edit().putInt("active_tab", 1).apply() },
+                            text = { Text("BookShelf", fontWeight = if (activeTab == 1) FontWeight.Bold else FontWeight.Normal) }
+                        )
+                    }
+                }
             },
         ) { paddingValues ->
             Box(
@@ -1049,7 +1190,7 @@ fun HomeScreen(
                             }
                         }
                     }
-                } else {
+                } else if (activeTab == 0) {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(vertical = 16.dp)
@@ -1126,10 +1267,6 @@ fun HomeScreen(
                                 }
                             }
                         } else {
-                            item {
-                                ReadingGoalWidget(viewModel, onNavigateToStats)
-                            }
-                            
                             items(sectionOrder, key = { it }) { sectionName ->
                             val index = sectionOrder.indexOf(sectionName)
                             val isDraggingThis = draggedSectionIndex == index
@@ -1537,9 +1674,34 @@ fun HomeScreen(
                         } // End of else block for search query
 
                         item {
+                            ReadingGoalWidget(viewModel, onNavigateToStats)
                             Spacer(modifier = Modifier.height(100.dp))
                         }
                     }
+                } else if (activeTab == 1) {
+                    BookShelfTab(
+                        viewModel = viewModel,
+                        bookshelves = bookshelves,
+                        bookshelfItems = bookshelfItems,
+                        libraryFiles = libraryFiles,
+                        onNavigateToReader = {
+                            onNavigateToReader(it)
+                            scope.launch { drawerState.close() }
+                        },
+                        onContextMenu = { contextMenuFile = it },
+                        bookshelfSortMode = bookshelfSortMode,
+                        bookshelfViewMode = bookshelfViewMode,
+                        onSortModeChange = { 
+                            bookshelfSortMode = it
+                            homePrefs.edit().putInt("bookshelf_sort_mode", it).apply()
+                        },
+                        onViewModeChange = {
+                            bookshelfViewMode = it
+                            homePrefs.edit().putInt("bookshelf_view_mode", it).apply()
+                        },
+                        isAssignmentMode = isBookshelfAssignmentMode,
+                        onToggleAssignmentMode = { isBookshelfAssignmentMode = !isBookshelfAssignmentMode }
+                    )
                 }
 
                 if (activeChecklistId == null) {
@@ -1555,63 +1717,88 @@ fun HomeScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Box {
-                            FloatingActionButton(
-                                onClick = { sortExpanded = true },
-                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                                shape = CircleShape,
-                                modifier = Modifier.size(48.dp),
-                                elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.List,
-                                    contentDescription = "Sort By"
-                                )
-                            }
-                            DropdownMenu(
-                                expanded = sortExpanded,
-                                onDismissRequest = { sortExpanded = false }
-                            ) {
-                                DropdownMenuItem(
-                                    text = { Text("Files") },
-                                    onClick = {
-                                        segregationMode = SegregationMode.FORMAT
-                                        homePrefs.edit().putString("segregation_mode", SegregationMode.FORMAT.name).apply()
-                                        sortExpanded = false
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("Num of Pages") },
-                                    onClick = {
-                                        segregationMode = SegregationMode.PAGES
-                                        homePrefs.edit().putString("segregation_mode", SegregationMode.PAGES.name).apply()
-                                        sortExpanded = false
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("File Size") },
-                                    onClick = {
-                                        segregationMode = SegregationMode.FILE_SIZE
-                                        homePrefs.edit().putString("segregation_mode", SegregationMode.FILE_SIZE.name).apply()
-                                        sortExpanded = false
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("Bookmarked") },
-                                    onClick = {
-                                        segregationMode = SegregationMode.BOOKMARKED
-                                        homePrefs.edit().putString("segregation_mode", SegregationMode.BOOKMARKED.name).apply()
-                                        sortExpanded = false
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("Reading List") },
-                                    onClick = {
-                                        segregationMode = SegregationMode.READING_LIST
-                                        homePrefs.edit().putString("segregation_mode", SegregationMode.READING_LIST.name).apply()
-                                        sortExpanded = false
-                                    }
-                                )
+                            if (activeTab == 0) {
+                                FloatingActionButton(
+                                    onClick = { sortExpanded = true },
+                                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    shape = CircleShape,
+                                    modifier = Modifier.size(48.dp),
+                                    elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.List,
+                                        contentDescription = "Sort By"
+                                    )
+                                }
+                                DropdownMenu(
+                                    expanded = sortExpanded,
+                                    onDismissRequest = { sortExpanded = false }
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text("Files") },
+                                        onClick = {
+                                            segregationMode = SegregationMode.FORMAT
+                                            homePrefs.edit().putString("segregation_mode", SegregationMode.FORMAT.name).apply()
+                                            sortExpanded = false
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Num of Pages") },
+                                        onClick = {
+                                            segregationMode = SegregationMode.PAGES
+                                            homePrefs.edit().putString("segregation_mode", SegregationMode.PAGES.name).apply()
+                                            sortExpanded = false
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("File Size") },
+                                        onClick = {
+                                            segregationMode = SegregationMode.FILE_SIZE
+                                            homePrefs.edit().putString("segregation_mode", SegregationMode.FILE_SIZE.name).apply()
+                                            sortExpanded = false
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Bookmarked") },
+                                        onClick = {
+                                            segregationMode = SegregationMode.BOOKMARKED
+                                            homePrefs.edit().putString("segregation_mode", SegregationMode.BOOKMARKED.name).apply()
+                                            sortExpanded = false
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Reading List") },
+                                        onClick = {
+                                            segregationMode = SegregationMode.READING_LIST
+                                            homePrefs.edit().putString("segregation_mode", SegregationMode.READING_LIST.name).apply()
+                                            sortExpanded = false
+                                        }
+                                    )
+                                }
+                            } else if (activeTab == 1) {
+                                FloatingActionButton(
+                                    onClick = { sortExpanded = true },
+                                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    shape = CircleShape,
+                                    modifier = Modifier.size(48.dp),
+                                    elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp)
+                                ) {
+                                    Icon(Icons.Default.FilterList, contentDescription = "Sort/Filter")
+                                }
+                                DropdownMenu(expanded = sortExpanded, onDismissRequest = { sortExpanded = false }) {
+                                    DropdownMenuItem(text = { Text("Manual") }, onClick = { bookshelfSortMode = -1; homePrefs.edit().putInt("bookshelf_sort_mode", -1).apply(); sortExpanded = false }, trailingIcon = { if(bookshelfSortMode==-1) Icon(Icons.Default.Check, null) })
+                                    DropdownMenuItem(text = { Text("Alphabetical (A-Z)") }, onClick = { bookshelfSortMode = 0; homePrefs.edit().putInt("bookshelf_sort_mode", 0).apply(); sortExpanded = false }, trailingIcon = { if(bookshelfSortMode==0) Icon(Icons.Default.Check, null) })
+                                    DropdownMenuItem(text = { Text("Alphabetical (Z-A)") }, onClick = { bookshelfSortMode = 1; homePrefs.edit().putInt("bookshelf_sort_mode", 1).apply(); sortExpanded = false }, trailingIcon = { if(bookshelfSortMode==1) Icon(Icons.Default.Check, null) })
+                                    DropdownMenuItem(text = { Text("File Count (Asc)") }, onClick = { bookshelfSortMode = 2; homePrefs.edit().putInt("bookshelf_sort_mode", 2).apply(); sortExpanded = false }, trailingIcon = { if(bookshelfSortMode==2) Icon(Icons.Default.Check, null) })
+                                    DropdownMenuItem(text = { Text("File Count (Desc)") }, onClick = { bookshelfSortMode = 3; homePrefs.edit().putInt("bookshelf_sort_mode", 3).apply(); sortExpanded = false }, trailingIcon = { if(bookshelfSortMode==3) Icon(Icons.Default.Check, null) })
+                                    Divider()
+                                    DropdownMenuItem(
+                                        text = { Text(if (bookshelfViewMode == 0) "Switch to Vertical Stack" else "Switch to Shelf Stack") },
+                                        onClick = { bookshelfViewMode = if (bookshelfViewMode == 0) 1 else 0; homePrefs.edit().putInt("bookshelf_view_mode", bookshelfViewMode).apply(); sortExpanded = false }
+                                    )
+                                }
                             }
                         }
 
@@ -1682,17 +1869,32 @@ fun HomeScreen(
                             }
                         )
 
-                        FloatingActionButton(
-                            onClick = { 
-                                filePickerLauncher.launch(arrayOf("*/*"))
-                            },
-                            containerColor = MaterialTheme.colorScheme.primary,
-                            contentColor = Color.White,
-                            shape = CircleShape,
-                            modifier = Modifier.size(48.dp),
-                            elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp)
-                        ) {
-                            Icon(Icons.Default.Add, contentDescription = "Add Book")
+                        if (activeTab == 0) {
+                            FloatingActionButton(
+                                onClick = { 
+                                    filePickerLauncher.launch(arrayOf("*/*"))
+                                },
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = Color.White,
+                                shape = CircleShape,
+                                modifier = Modifier.size(48.dp),
+                                elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp)
+                            ) {
+                                Icon(Icons.Default.Add, contentDescription = "Add Book")
+                            }
+                        } else if (activeTab == 1) {
+                            if (!isBookshelfAssignmentMode) {
+                                FloatingActionButton(
+                                    onClick = { isBookshelfAssignmentMode = true },
+                                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    shape = CircleShape,
+                                    modifier = Modifier.size(48.dp),
+                                    elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp)
+                                ) {
+                                    Icon(Icons.Default.SyncAlt, contentDescription = "Assignment Mode")
+                                }
+                            }
                         }
                     }
                 }

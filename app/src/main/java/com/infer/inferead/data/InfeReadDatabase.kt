@@ -8,7 +8,7 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [User::class, LibraryFile::class, Checklist::class, ChecklistItem::class, ReadingSession::class, Annotation::class], version = 7, exportSchema = false)
+@Database(entities = [User::class, LibraryFile::class, Checklist::class, ChecklistItem::class, ReadingSession::class, Annotation::class, Bookshelf::class, BookshelfItem::class], version = 8, exportSchema = false)
 abstract class InfeReadDatabase : RoomDatabase() {
     abstract fun infeReadDao(): InfeReadDao
 
@@ -28,6 +28,13 @@ abstract class InfeReadDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS `bookshelves` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `colorHex` TEXT NOT NULL, `sortOrder` INTEGER NOT NULL, `isMinimised` INTEGER NOT NULL)")
+                db.execSQL("CREATE TABLE IF NOT EXISTS `bookshelf_items` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `bookshelfId` INTEGER NOT NULL, `fileId` INTEGER NOT NULL, `sortOrder` INTEGER NOT NULL)")
+            }
+        }
+
         @Volatile
         private var INSTANCE: InfeReadDatabase? = null
 
@@ -38,7 +45,7 @@ abstract class InfeReadDatabase : RoomDatabase() {
                     InfeReadDatabase::class.java,
                     "infer_read_database"
                 )
-                .addMigrations(MIGRATION_5_6, MIGRATION_6_7)
+                .addMigrations(MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
                 .fallbackToDestructiveMigration()
                 .build()
                 INSTANCE = instance

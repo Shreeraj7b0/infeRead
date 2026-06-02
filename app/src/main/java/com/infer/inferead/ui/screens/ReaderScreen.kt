@@ -166,6 +166,10 @@ fun ReaderScreen(
     val context = androidx.compose.ui.platform.LocalContext.current
     val homePrefs = remember { context.getSharedPreferences("home_prefs", android.content.Context.MODE_PRIVATE) }
     
+    val bookshelves by homeViewModel.bookshelves.collectAsState()
+    val bookshelfItems by homeViewModel.bookshelfItems.collectAsState()
+    var activeTab by remember { mutableIntStateOf(homePrefs.getInt("active_tab", 0)) }
+    
     val segregationMode = remember(homePrefs) {
         val savedMode = homePrefs.getString("segregation_mode", "FORMAT")
         try { com.infer.inferead.ui.screens.SegregationMode.valueOf(savedMode!!) } catch (e: Exception) { com.infer.inferead.ui.screens.SegregationMode.FORMAT }
@@ -355,6 +359,7 @@ fun ReaderScreen(
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     
+                    val primaryColor = MaterialTheme.colorScheme.primary
                     LazyColumn(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -416,63 +421,98 @@ fun ReaderScreen(
                             Spacer(modifier = Modifier.height(4.dp))
                         }
                         
-                        sectionOrder.filter { it != "Checklists" }.forEach { sectionName ->
-                            val filesForCategory = groupedFiles[sectionName] ?: emptyList()
-                            if (filesForCategory.isNotEmpty()) {
-                                item {
-                                    Text(
-                                        text = sectionName,
-                                        style = MaterialTheme.typography.labelMedium.copy(
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.primary
-                                        ),
-                                        modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)
-                                    )
-                                }
-                                items(filesForCategory) { file ->
-                                    val isCurrentFile = file.id == fileId
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(36.dp)
-                                            .clip(RoundedCornerShape(6.dp))
-                                            .background(
-                                                if (isCurrentFile) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f) else Color.Transparent
-                                            )
-                                            .combinedClickable(
-                                                onClick = {
-                                                    scope.launch { drawerState.close() }
-                                                    if (file.id != fileId) {
-                                                        viewModel.loadFile(file.id)
-                                                    }
-                                                },
-                                                onLongClick = {
-                                                    contextMenuFile = file
-                                                }
-                                            )
-                                            .padding(horizontal = 8.dp, vertical = 6.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Description,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
-                                            modifier = Modifier.size(16.dp)
-                                        )
+                        if (activeTab == 0) {
+                            sectionOrder.filter { it != "Checklists" }.forEach { sectionName ->
+                                val filesForCategory = groupedFiles[sectionName] ?: emptyList()
+                                if (filesForCategory.isNotEmpty()) {
+                                    item {
                                         Text(
-                                            text = file.title,
-                                            style = MaterialTheme.typography.bodySmall.copy(
-                                                fontWeight = if (isCurrentFile) FontWeight.SemiBold else FontWeight.Normal,
-                                                fontSize = 13.sp
+                                            text = sectionName,
+                                            style = MaterialTheme.typography.labelMedium.copy(
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.primary
                                             ),
-                                            color = if (isCurrentFile) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                            modifier = Modifier.weight(1f)
+                                            modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)
                                         )
                                     }
-                                    Spacer(modifier = Modifier.height(4.dp))
+                                    items(filesForCategory) { file ->
+                                        val isCurrentFile = file.id == fileId
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(36.dp)
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(
+                                                    if (isCurrentFile) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f) else Color.Transparent
+                                                )
+                                                .combinedClickable(
+                                                    onClick = {
+                                                        scope.launch { drawerState.close() }
+                                                        if (file.id != fileId) {
+                                                            viewModel.loadFile(file.id)
+                                                        }
+                                                    },
+                                                    onLongClick = {
+                                                        contextMenuFile = file
+                                                    }
+                                                )
+                                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Description,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Text(
+                                                text = file.title,
+                                                style = MaterialTheme.typography.bodySmall.copy(
+                                                    fontWeight = if (isCurrentFile) FontWeight.SemiBold else FontWeight.Normal,
+                                                    fontSize = 13.sp
+                                                ),
+                                                color = if (isCurrentFile) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                    }
+                                }
+                            }
+                        } else if (activeTab == 1) {
+                            bookshelves.sortedBy { it.sortOrder }.forEach { shelf ->
+                                val itemsInShelf = bookshelfItems.filter { it.bookshelfId == shelf.id }
+                                val shelfFiles = itemsInShelf.mapNotNull { bItem -> libraryFiles.find { it.id == bItem.fileId } }
+                                val shelfColor = try { Color(android.graphics.Color.parseColor(shelf.colorHex)) } catch(e:Exception){ primaryColor }
+                                
+                                if (shelfFiles.isNotEmpty()) {
+                                    item {
+                                        Text(
+                                            text = shelf.name,
+                                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, color = shelfColor),
+                                            modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)
+                                        )
+                                    }
+                                    items(shelfFiles) { file ->
+                                        val isCurrentFile = file.id == fileId
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth().height(36.dp).clip(RoundedCornerShape(6.dp))
+                                                .background(if (isCurrentFile) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f) else Color.Transparent)
+                                                .combinedClickable(
+                                                    onClick = { scope.launch { drawerState.close() }; if (file.id != fileId) viewModel.loadFile(file.id) },
+                                                    onLongClick = { contextMenuFile = file }
+                                                ).padding(horizontal = 8.dp, vertical = 6.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Icon(Icons.Default.Description, null, tint = shelfColor.copy(alpha=0.7f), modifier = Modifier.size(16.dp))
+                                            Text(file.title, style = MaterialTheme.typography.bodySmall.copy(fontWeight = if(isCurrentFile) FontWeight.SemiBold else FontWeight.Normal, fontSize=13.sp), color = if (isCurrentFile) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onBackground.copy(alpha=0.7f), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                                        }
+                                        Spacer(Modifier.height(4.dp))
+                                    }
                                 }
                             }
                         }
@@ -574,7 +614,41 @@ fun ReaderScreen(
                         }
                     }
                     
-                    Spacer(Modifier.height(16.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                                .padding(4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(50))
+                                    .background(if (activeTab == 0) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
+                                    .clickable { activeTab = 0 }
+                                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                            ) {
+                                Text("Library", style = MaterialTheme.typography.labelMedium.copy(fontWeight = if (activeTab == 0) FontWeight.Bold else FontWeight.Normal, color = if (activeTab == 0) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface))
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(50))
+                                    .background(if (activeTab == 1) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
+                                    .clickable { activeTab = 1 }
+                                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                            ) {
+                                Text("BookShelf", style = MaterialTheme.typography.labelMedium.copy(fontWeight = if (activeTab == 1) FontWeight.Bold else FontWeight.Normal, color = if (activeTab == 1) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface))
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
                 }
             }
         }
@@ -1534,7 +1608,7 @@ fun ReaderScreen(
                             valueRange = 1f..currentFile!!.totalPages.toFloat(),
                             steps = if (currentFile!!.totalPages > 2) currentFile!!.totalPages - 2 else 0,
                             colors = SliderDefaults.colors(
-                                thumbColor = if (settings.contrastMode == ContrastMode.Dark) Color(0xFF9AB0E6) else MaterialTheme.colorScheme.primary,
+                                thumbColor = if (bookmarkedPages.contains(scrubbingPage.roundToInt())) Color(0xFFFFC107) else if (settings.contrastMode == ContrastMode.Dark) Color(0xFF9AB0E6) else MaterialTheme.colorScheme.primary,
                                 activeTrackColor = if (settings.contrastMode == ContrastMode.Dark) Color(0xFF9AB0E6) else MaterialTheme.colorScheme.primary,
                                 inactiveTrackColor = textColor.copy(alpha = 0.24f)
                             ),

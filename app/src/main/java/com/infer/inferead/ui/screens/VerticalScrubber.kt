@@ -83,12 +83,10 @@ fun VerticalScrubber(
                 }
             }
 
-            // Scrubber Track
             Box(
                 modifier = Modifier
-                    .width(28.dp)
+                    .width(14.dp)
                     .fillMaxHeight(0.6f)
-                    .padding(end = 2.dp)
             ) {
                 val trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.15f)
                 val defaultThumbColor = MaterialTheme.colorScheme.primary

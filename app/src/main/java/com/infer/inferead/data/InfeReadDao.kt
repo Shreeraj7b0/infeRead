@@ -106,4 +106,45 @@ interface InfeReadDao {
 
     @Query("SELECT * FROM reading_sessions WHERE date >= :startDate AND date <= :endDate ORDER BY date ASC")
     fun getReadingSessionsBetween(startDate: Long, endDate: Long): Flow<List<ReadingSession>>
+
+    // Bookshelf
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertBookshelf(bookshelf: Bookshelf): Long
+
+    @Query("SELECT * FROM bookshelves ORDER BY sortOrder ASC")
+    fun getAllBookshelves(): Flow<List<Bookshelf>>
+
+    @Query("UPDATE bookshelves SET name = :name WHERE id = :id")
+    suspend fun renameBookshelf(id: Int, name: String): Int
+
+    @Query("UPDATE bookshelves SET colorHex = :colorHex WHERE id = :id")
+    suspend fun updateBookshelfColor(id: Int, colorHex: String): Int
+
+    @Query("UPDATE bookshelves SET sortOrder = :sortOrder WHERE id = :id")
+    suspend fun updateBookshelfSortOrder(id: Int, sortOrder: Int): Int
+
+    @Query("UPDATE bookshelves SET isMinimised = :isMinimised WHERE id = :id")
+    suspend fun updateBookshelfMinimised(id: Int, isMinimised: Boolean): Int
+
+    @Query("DELETE FROM bookshelves WHERE id = :id")
+    suspend fun deleteBookshelf(id: Int): Int
+
+    // BookshelfItems
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertBookshelfItem(item: BookshelfItem): Long
+
+    @Query("SELECT * FROM bookshelf_items")
+    fun getAllBookshelfItems(): Flow<List<BookshelfItem>>
+
+    @Query("DELETE FROM bookshelf_items WHERE id = :itemId")
+    suspend fun deleteBookshelfItem(itemId: Int): Int
+
+    @Query("DELETE FROM bookshelf_items WHERE bookshelfId = :bookshelfId AND fileId = :fileId")
+    suspend fun deleteBookshelfItemByFile(bookshelfId: Int, fileId: Int): Int
+
+    @Query("DELETE FROM bookshelf_items WHERE bookshelfId = :bookshelfId")
+    suspend fun clearBookshelfItems(bookshelfId: Int): Int
+
+    @Query("UPDATE bookshelf_items SET sortOrder = :sortOrder WHERE id = :id")
+    suspend fun updateBookshelfItemSortOrder(id: Int, sortOrder: Int): Int
 }
