@@ -429,7 +429,9 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                 pdfDocument.finishPage(page)
                 
                 val downloadsDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
-                val file = java.io.File(downloadsDir, "${checklist.name.replace(Regex("[^a-zA-Z0-9.-]"), "_")}.pdf")
+                val infeReadDir = java.io.File(downloadsDir, "infeRead")
+                if (!infeReadDir.exists()) infeReadDir.mkdirs()
+                val file = java.io.File(infeReadDir, "${checklist.name.replace(Regex("[^a-zA-Z0-9.-]"), "_")}.pdf")
                 val out = java.io.FileOutputStream(file)
                 pdfDocument.writeTo(out)
                 pdfDocument.close()

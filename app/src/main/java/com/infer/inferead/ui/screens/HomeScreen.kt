@@ -24,6 +24,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
@@ -1132,9 +1133,6 @@ fun HomeScreen(
                                                               .fillMaxWidth()
                                                               .pointerInput(item.id) {
                                                                   detectTapGestures(
-                                                                      onTap = {
-                                                                          viewModel.toggleChecklistItemCompletion(item)
-                                                                      },
                                                                       onLongPress = {
                                                                           isHoverMenuVisible = true
                                                                       }
@@ -1166,8 +1164,13 @@ fun HomeScreen(
                                                       ) {
                                                           Checkbox(
                                                               checked = item.isCompleted,
-                                                              onCheckedChange = { 
-                                                                  viewModel.toggleChecklistItemCompletion(item)
+                                                              onCheckedChange = { checked ->
+                                                                  val updatedItem = if (checked && item.isPinned) {
+                                                                      item.copy(isCompleted = true, isPinned = false)
+                                                                  } else {
+                                                                      item.copy(isCompleted = checked)
+                                                                  }
+                                                                  viewModel.updateChecklistItem(updatedItem)
                                                               }
                                                           )
                                                           Text(
@@ -1191,33 +1194,69 @@ fun HomeScreen(
                                                   }
                                                   
                                                   // Hover Menu overlay
-                                                  DropdownMenu(
-                                                      expanded = isHoverMenuVisible,
-                                                      onDismissRequest = { isHoverMenuVisible = false }
-                                                  ) {
-                                                      DropdownMenuItem(
-                                                          text = { Text("Edit") },
-                                                          onClick = {
-                                                              showEditDialog = true
-                                                              isHoverMenuVisible = false
+                                                  if (isHoverMenuVisible) {
+                                                      @OptIn(ExperimentalMaterial3Api::class)
+                                                      ModalBottomSheet(
+                                                          onDismissRequest = { isHoverMenuVisible = false },
+                                                          sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+                                                      ) {
+                                                          Column(
+                                                              modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp),
+                                                              horizontalAlignment = Alignment.CenterHorizontally
+                                                          ) {
+                                                              Row(
+                                                                  modifier = Modifier.fillMaxWidth(),
+                                                                  verticalAlignment = Alignment.CenterVertically,
+                                                                  horizontalArrangement = Arrangement.Center
+                                                              ) {
+                                                                  Icon(Icons.Default.Checklist, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp))
+                                                                  Spacer(modifier = Modifier.width(12.dp))
+                                                                  Text("Task Options", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                                              }
+                                                              Spacer(modifier = Modifier.height(32.dp))
+                                                              
+                                                              Row(
+                                                                  modifier = Modifier.fillMaxWidth(),
+                                                                  horizontalArrangement = Arrangement.SpaceEvenly
+                                                              ) {
+                                                                  // Edit
+                                                                  Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { showEditDialog = true; isHoverMenuVisible = false }) {
+                                                                      Box(modifier = Modifier.size(56.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
+                                                                          Icon(Icons.Default.Edit, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                                                      }
+                                                                      Spacer(modifier = Modifier.height(8.dp))
+                                                                      Text("Edit", style = MaterialTheme.typography.labelMedium)
+                                                                  }
+                                                                  // Copy Text
+                                                                  Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { 
+                                                                      val clipboardManager = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                                                      val clip = android.content.ClipData.newPlainText("Copied Text", item.title)
+                                                                      clipboardManager.setPrimaryClip(clip)
+                                                                      isHoverMenuVisible = false 
+                                                                  }) {
+                                                                      Box(modifier = Modifier.size(56.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
+                                                                          Icon(Icons.Default.ContentCopy, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                                                      }
+                                                                      Spacer(modifier = Modifier.height(8.dp))
+                                                                      Text("Copy", style = MaterialTheme.typography.labelMedium)
+                                                                  }
+                                                                  // Pin
+                                                                  if (!item.isCompleted) {
+                                                                      Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { 
+                                                                          viewModel.updateChecklistItem(item.copy(isPinned = !item.isPinned))
+                                                                          isHoverMenuVisible = false 
+                                                                      }) {
+                                                                          Box(modifier = Modifier.size(56.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
+                                                                              Icon(if (item.isPinned) Icons.Default.PushPin else Icons.Outlined.PushPin, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                                                          }
+                                                                          Spacer(modifier = Modifier.height(8.dp))
+                                                                          Text(if (item.isPinned) "Unpin" else "Pin", style = MaterialTheme.typography.labelMedium)
+                                                                      }
+                                                                  }
+                                                              }
+                                                              Spacer(modifier = Modifier.height(32.dp))
                                                           }
-                                                      )
-                                                      DropdownMenuItem(
-                                                          text = { Text("Copy Text") },
-                                                          onClick = {
-                                                              val clipboardManager = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                                                              val clip = android.content.ClipData.newPlainText("Copied Text", item.title)
-                                                              clipboardManager.setPrimaryClip(clip)
-                                                              isHoverMenuVisible = false
-                                                          }
-                                                      )
-                                                      DropdownMenuItem(
-                                                          text = { Text(if (item.isPinned) "Unpin" else "Pin") },
-                                                          onClick = {
-                                                              viewModel.updateChecklistItem(item.copy(isPinned = !item.isPinned))
-                                                              isHoverMenuVisible = false
-                                                          }
-                                                      )
+                                                      }
                                                   }
                                               }
                                           }
@@ -2508,26 +2547,26 @@ fun HomeScreen(
                 )
                 Spacer(modifier = Modifier.height(32.dp))
                 
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     OutlinedButton(
                         onClick = {
                             viewModel.exportFile(context, downloadDialogFile!!, modified = false)
                             downloadDialogFile = null
                         },
-                        modifier = Modifier.weight(1f).height(56.dp),
+                        modifier = Modifier.weight(0.8f).height(56.dp),
                         shape = RoundedCornerShape(16.dp)
                     ) {
-                        Text("Original")
+                        Text("Original", style = MaterialTheme.typography.labelMedium)
                     }
                     Button(
                         onClick = {
                             viewModel.exportFile(context, downloadDialogFile!!, modified = true)
                             downloadDialogFile = null
                         },
-                        modifier = Modifier.weight(1f).height(56.dp),
+                        modifier = Modifier.weight(1.2f).height(56.dp),
                         shape = RoundedCornerShape(16.dp)
                     ) {
-                        Text("With Modifications")
+                        Text("With Modifications", style = MaterialTheme.typography.labelMedium, maxLines = 1, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                     }
                 }
                 Spacer(modifier = Modifier.height(32.dp))
