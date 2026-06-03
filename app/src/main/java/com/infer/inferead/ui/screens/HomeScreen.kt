@@ -8,6 +8,8 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -98,7 +100,7 @@ fun HomeScreen(
     val homePrefs = remember { context.getSharedPreferences("home_prefs", android.content.Context.MODE_PRIVATE) }
     val readerPrefs = remember { context.getSharedPreferences("reader_settings", android.content.Context.MODE_PRIVATE) }
     
-    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    val drawerState = remember { DrawerState(initialValue = DrawerValue.Closed) }
     val scope = rememberCoroutineScope()
     val libraryFiles by viewModel.libraryFiles.collectAsState()
     val checklists by viewModel.checklists.collectAsState()
@@ -1993,140 +1995,201 @@ fun HomeScreen(
             sheetState = sheetState,
             containerColor = MaterialTheme.colorScheme.surface
         ) {
-            Column(modifier = Modifier.padding(16.dp).padding(bottom = 32.dp)) {
-                Text(
-                    contextMenuFile!!.title,
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                    modifier = Modifier.padding(bottom = 16.dp)
-                )
-                // "Remove from Bookshelf" — only visible when opened from a bookshelf
-                if (contextMenuFileShelfId != null) {
-                    ListItem(
-                        headlineContent = { Text("Remove from Bookshelf", color = MaterialTheme.colorScheme.error) },
-                        leadingContent = {
-                            Icon(
-                                Icons.Default.Remove,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.error
-                            )
-                        },
-                        modifier = Modifier.clickable {
-                            viewModel.removeFileFromBookshelf(contextMenuFileShelfId!!, contextMenuFile!!.id)
-                            contextMenuFile = null
-                            contextMenuFileShelfId = null
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+                    .padding(bottom = 32.dp)
+            ) {
+                // Header
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 24.dp)) {
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        val icon = when(contextMenuFile!!.format) {
+                            "PDF" -> androidx.compose.material.icons.Icons.Default.PictureAsPdf
+                            "EPUB" -> androidx.compose.material.icons.Icons.Default.MenuBook
+                            "TXT" -> androidx.compose.material.icons.Icons.Default.Description
+                            else -> androidx.compose.material.icons.Icons.Default.InsertDriveFile
                         }
-                    )
+                        Icon(imageVector = icon, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                    }
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = contextMenuFile!!.title,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 2,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                        )
+                        val totalStr = if (contextMenuFile!!.totalPages > 0) " • ${contextMenuFile!!.totalPages} Pages" else ""
+                        Text(
+                            text = "${contextMenuFile!!.format}$totalStr",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
-                ListItem(
-                    headlineContent = { Text("Rename File") },
-                    leadingContent = { Icon(Icons.Default.Edit, contentDescription = null) },
-                    modifier = Modifier.clickable {
-                        renamingFile = contextMenuFile
-                        contextMenuFile = null; contextMenuFileShelfId = null
-                    }
-                )
-                ListItem(
-                    headlineContent = { Text("Relink File") },
-                    leadingContent = { Icon(Icons.Default.Link, contentDescription = null) },
-                    modifier = Modifier.clickable {
-                        relinkingFileId = contextMenuFile!!.id
-                        relinkFilePickerLauncher.launch(arrayOf("*/*"))
-                        contextMenuFile = null; contextMenuFileShelfId = null
-                    }
-                )
-                if (contextMenuFile!!.format in listOf("PDF", "EPUB", "CBZ", "CBR", "CB7", "CODING")) {
-                    ListItem(
-                        headlineContent = { Text(if (contextMenuFile!!.isFinished) "Mark as Unfinished" else "Mark as Finished") },
-                        leadingContent = { Icon(Icons.Default.CheckCircle, contentDescription = null) },
-                        modifier = Modifier.clickable {
-                            viewModel.markFinished(contextMenuFile!!.id, !contextMenuFile!!.isFinished)
-                            contextMenuFile = null; contextMenuFileShelfId = null
-                        }
-                    )
-                }
-                ListItem(
-                    headlineContent = { Text("Personal Rating") },
-                    leadingContent = { Icon(Icons.Default.Star, contentDescription = null) },
-                    modifier = Modifier.clickable {
-                        ratingDialogFile = contextMenuFile
-                        contextMenuFile = null; contextMenuFileShelfId = null
-                    }
-                )
-                ListItem(
-                    headlineContent = { Text("Set Custom Cover") },
-                    leadingContent = { Icon(Icons.Default.Add, contentDescription = null) },
-                    modifier = Modifier.clickable {
-                        editingThumbnailFileId = contextMenuFile!!.id
-                        thumbnailPickerLauncher.launch(arrayOf("image/*"))
-                        contextMenuFile = null; contextMenuFileShelfId = null
-                    }
-                )
-                ListItem(
-                    headlineContent = { Text(if (contextMenuFile!!.isToRead) "Remove from Reading List" else "Mark for Reading") },
-                    leadingContent = { Icon(Icons.Default.BookmarkAdd, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
-                    modifier = Modifier.clickable {
-                        viewModel.markToRead(contextMenuFile!!.id, !contextMenuFile!!.isToRead)
-                        contextMenuFile = null; contextMenuFileShelfId = null
-                    }
-                )
-                if (contextMenuFile!!.isBookmarked) {
-                    ListItem(
-                        headlineContent = { Text("Remove All Bookmarks", color = Color(0xFFFFA000)) },
-                        leadingContent = { Icon(Icons.Default.BookmarkRemove, contentDescription = null, tint = Color(0xFFFFA000)) },
-                        modifier = Modifier.clickable {
-                            val fileId = contextMenuFile!!.id
-                            viewModel.clearBookmarks(fileId)
-                            readerPrefs.edit().remove("bookmarked_pages_$fileId").apply()
-                            contextMenuFile = null; contextMenuFileShelfId = null
-                        }
-                    )
-                }
-                if (contextMenuFile!!.format == "PDF") {
-                    ListItem(
-                        headlineContent = { Text("Convert to EPUB", color = MaterialTheme.colorScheme.tertiary) },
-                        leadingContent = {
-                            Icon(Icons.Default.MenuBook, contentDescription = null, tint = MaterialTheme.colorScheme.tertiary)
-                        },
-                        modifier = Modifier.clickable {
-                            viewModel.convertPdfToEpub(contextMenuFile!!)
-                            contextMenuFile = null; contextMenuFileShelfId = null
-                        }
-                    )
-                }
-                ListItem(
-                    headlineContent = { Text("Share File", color = MaterialTheme.colorScheme.primary) },
-                    leadingContent = { Icon(Icons.Default.Share, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
-                    modifier = Modifier.clickable {
+
+                // Quick Actions
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { 
                         if (contextMenuFile!!.format == "CODING") {
-                            formatSelectionDialogFile = contextMenuFile
-                            formatSelectionDialogIsShare = true
+                            formatSelectionDialogFile = contextMenuFile; formatSelectionDialogIsShare = true
                         } else {
                             viewModel.exportFile(context, contextMenuFile!!, modified = false)
                         }
                         contextMenuFile = null; contextMenuFileShelfId = null
+                    }.padding(8.dp)) {
+                        Box(modifier = Modifier.size(48.dp).background(MaterialTheme.colorScheme.surfaceVariant, CircleShape), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.Share, contentDescription = "Share", tint = MaterialTheme.colorScheme.primary)
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("Share", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface)
                     }
-                )
-                ListItem(
-                    headlineContent = { Text("Download File", color = MaterialTheme.colorScheme.primary) },
-                    leadingContent = { Icon(Icons.Default.Download, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
-                    modifier = Modifier.clickable {
+                    
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { 
                         if (contextMenuFile!!.format == "CODING") {
-                            formatSelectionDialogFile = contextMenuFile
-                            formatSelectionDialogIsShare = false
+                            formatSelectionDialogFile = contextMenuFile; formatSelectionDialogIsShare = false
                         } else {
                             downloadDialogFile = contextMenuFile
                         }
                         contextMenuFile = null; contextMenuFileShelfId = null
+                    }.padding(8.dp)) {
+                        Box(modifier = Modifier.size(48.dp).background(MaterialTheme.colorScheme.surfaceVariant, CircleShape), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.Download, contentDescription = "Download", tint = MaterialTheme.colorScheme.primary)
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("Download", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface)
                     }
-                )
-                ListItem(
-                    headlineContent = { Text("Delete File", color = MaterialTheme.colorScheme.error) },
-                    leadingContent = { Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
-                    modifier = Modifier.clickable {
+
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { 
+                        renamingFile = contextMenuFile
+                        contextMenuFile = null; contextMenuFileShelfId = null
+                    }.padding(8.dp)) {
+                        Box(modifier = Modifier.size(48.dp).background(MaterialTheme.colorScheme.surfaceVariant, CircleShape), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.Edit, contentDescription = "Rename", tint = MaterialTheme.colorScheme.primary)
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("Rename", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface)
+                    }
+
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { 
                         viewModel.deleteFile(contextMenuFile!!.id)
                         contextMenuFile = null; contextMenuFileShelfId = null
+                    }.padding(8.dp)) {
+                        Box(modifier = Modifier.size(48.dp).background(MaterialTheme.colorScheme.errorContainer, CircleShape), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.onErrorContainer)
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("Delete", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface)
                     }
-                )
+                }
+
+                androidx.compose.material3.Divider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 1.dp)
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // List Options
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f, fill = false)
+                        .verticalScroll(rememberScrollState())
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                ) {
+                    if (contextMenuFileShelfId != null) {
+                        ListItem(
+                            headlineContent = { Text("Remove from Bookshelf", color = MaterialTheme.colorScheme.error) },
+                            leadingContent = { Icon(Icons.Default.Remove, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+                            modifier = Modifier.clickable {
+                                viewModel.removeFileFromBookshelf(contextMenuFileShelfId!!, contextMenuFile!!.id)
+                                contextMenuFile = null; contextMenuFileShelfId = null
+                            },
+                            colors = androidx.compose.material3.ListItemDefaults.colors(containerColor = Color.Transparent)
+                        )
+                    }
+                    ListItem(
+                        headlineContent = { Text(if (contextMenuFile!!.isToRead) "Remove from Reading List" else "Mark for Reading") },
+                        leadingContent = { Icon(if (contextMenuFile!!.isToRead) Icons.Default.BookmarkRemove else Icons.Default.BookmarkAdd, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                        modifier = Modifier.clickable {
+                            viewModel.markToRead(contextMenuFile!!.id, !contextMenuFile!!.isToRead)
+                            contextMenuFile = null; contextMenuFileShelfId = null
+                        },
+                        colors = androidx.compose.material3.ListItemDefaults.colors(containerColor = Color.Transparent)
+                    )
+                    if (contextMenuFile!!.format in listOf("PDF", "EPUB", "CBZ", "CBR", "CB7", "CODING")) {
+                        ListItem(
+                            headlineContent = { Text(if (contextMenuFile!!.isFinished) "Mark as Unfinished" else "Mark as Finished") },
+                            leadingContent = { Icon(Icons.Default.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                            modifier = Modifier.clickable {
+                                viewModel.markFinished(contextMenuFile!!.id, !contextMenuFile!!.isFinished)
+                                contextMenuFile = null; contextMenuFileShelfId = null
+                            },
+                            colors = androidx.compose.material3.ListItemDefaults.colors(containerColor = Color.Transparent)
+                        )
+                    }
+                    if (contextMenuFile!!.isBookmarked) {
+                        ListItem(
+                            headlineContent = { Text("Remove All Bookmarks", color = Color(0xFFFFA000)) },
+                            leadingContent = { Icon(Icons.Default.BookmarkRemove, contentDescription = null, tint = Color(0xFFFFA000)) },
+                            modifier = Modifier.clickable {
+                                val fileId = contextMenuFile!!.id
+                                viewModel.clearBookmarks(fileId)
+                                readerPrefs.edit().remove("bookmarked_pages_$fileId").apply()
+                                contextMenuFile = null; contextMenuFileShelfId = null
+                            },
+                            colors = androidx.compose.material3.ListItemDefaults.colors(containerColor = Color.Transparent)
+                        )
+                    }
+                    ListItem(
+                        headlineContent = { Text("Personal Rating") },
+                        leadingContent = { Icon(Icons.Default.Star, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                        modifier = Modifier.clickable {
+                            ratingDialogFile = contextMenuFile
+                            contextMenuFile = null; contextMenuFileShelfId = null
+                        },
+                        colors = androidx.compose.material3.ListItemDefaults.colors(containerColor = Color.Transparent)
+                    )
+                    ListItem(
+                        headlineContent = { Text("Set Custom Cover") },
+                        leadingContent = { Icon(Icons.Default.AddPhotoAlternate, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                        modifier = Modifier.clickable {
+                            editingThumbnailFileId = contextMenuFile!!.id
+                            thumbnailPickerLauncher.launch(arrayOf("image/*"))
+                            contextMenuFile = null; contextMenuFileShelfId = null
+                        },
+                        colors = androidx.compose.material3.ListItemDefaults.colors(containerColor = Color.Transparent)
+                    )
+                    ListItem(
+                        headlineContent = { Text("Relink File") },
+                        leadingContent = { Icon(Icons.Default.Link, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                        modifier = Modifier.clickable {
+                            relinkingFileId = contextMenuFile!!.id
+                            relinkFilePickerLauncher.launch(arrayOf("*/*"))
+                            contextMenuFile = null; contextMenuFileShelfId = null
+                        },
+                        colors = androidx.compose.material3.ListItemDefaults.colors(containerColor = Color.Transparent)
+                    )
+                    if (contextMenuFile!!.format == "PDF") {
+                        ListItem(
+                            headlineContent = { Text("Convert to EPUB", color = MaterialTheme.colorScheme.tertiary) },
+                            leadingContent = { Icon(Icons.Default.MenuBook, contentDescription = null, tint = MaterialTheme.colorScheme.tertiary) },
+                            modifier = Modifier.clickable {
+                                viewModel.convertPdfToEpub(contextMenuFile!!)
+                                contextMenuFile = null; contextMenuFileShelfId = null
+                            },
+                            colors = androidx.compose.material3.ListItemDefaults.colors(containerColor = Color.Transparent)
+                        )
+                    }
+                }
             }
         }
     }

@@ -267,6 +267,17 @@ fun ReaderScreen(
         }
     }
 
+    LaunchedEffect(verticalScrollProgress) {
+        if (verticalScrollProgress > 0f && verticalScrollProgress < 1f) {
+            showVerticalScrubber = true
+            verticalScrubberTimeoutJob?.cancel()
+            verticalScrubberTimeoutJob = scope.launch {
+                kotlinx.coroutines.delay(1500)
+                showVerticalScrubber = false
+            }
+        }
+    }
+
     // Determine colors based on ContrastMode and Warm Filter
     val backgroundColor = remember(settings.contrastMode, settings.isWarmFilterActive) {
         when (settings.contrastMode) {
@@ -1139,7 +1150,8 @@ fun ReaderScreen(
                                                 context.startActivity(intent)
                                                 textSelectionData = null
                                             }) {
-                                                Text("Search", color = MaterialTheme.colorScheme.onSurface)
+                                                val displayText = sel.text.trim().take(15) + if (sel.text.length > 15) "..." else ""
+                                                Text("Search \"$displayText\"", color = MaterialTheme.colorScheme.onSurface)
                                             }
                                         }
                                     }
