@@ -33,6 +33,7 @@ import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.Modifier
+import com.infer.inferead.ui.modifiers.bounceClick
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -574,8 +575,10 @@ fun HomeScreen(
                                                             .clip(RoundedCornerShape(6.dp))
                                                             .combinedClickable(
                                                                 onClick = {
-                                                                    onNavigateToReader(file.id)
-                                                                    scope.launch { drawerState.close() }
+                                                                    scope.launch { 
+                                                                        drawerState.close()
+                                                                        onNavigateToReader(file.id)
+                                                                    }
                                                                 },
                                                                 onLongClick = {
                                                                     contextMenuFile = file
@@ -679,7 +682,7 @@ fun HomeScreen(
                                                 Row(
                                                     modifier = Modifier.fillMaxWidth().height(36.dp).clip(RoundedCornerShape(6.dp))
                                                         .combinedClickable(
-                                                            onClick = { onNavigateToReader(file.id); scope.launch { drawerState.close() } },
+                                                            onClick = { scope.launch { drawerState.close(); onNavigateToReader(file.id) } },
                                                             onLongClick = { contextMenuFile = file }
                                                         ).padding(horizontal = 8.dp, vertical = 6.dp),
                                                     verticalAlignment = Alignment.CenterVertically,
@@ -716,8 +719,10 @@ fun HomeScreen(
                                         .clip(RoundedCornerShape(6.dp))
                                         .combinedClickable(
                                             onClick = {
-                                                onNavigateToReader(file.id)
-                                                scope.launch { drawerState.close() }
+                                                scope.launch { 
+                                                    drawerState.close()
+                                                    onNavigateToReader(file.id)
+                                                }
                                             },
                                             onLongClick = { contextMenuFile = file }
                                         )
@@ -759,8 +764,10 @@ fun HomeScreen(
                                         .clip(RoundedCornerShape(6.dp))
                                         .combinedClickable(
                                             onClick = {
-                                                onNavigateToReader(file.id)
-                                                scope.launch { drawerState.close() }
+                                                scope.launch { 
+                                                    drawerState.close()
+                                                    onNavigateToReader(file.id)
+                                                }
                                             },
                                             onLongClick = { contextMenuFile = file }
                                         )
@@ -1726,8 +1733,10 @@ fun HomeScreen(
                         bookshelfItems = bookshelfItems,
                         libraryFiles = libraryFiles,
                         onNavigateToReader = {
-                            onNavigateToReader(it)
-                            scope.launch { drawerState.close() }
+                            scope.launch { 
+                                drawerState.close()
+                                onNavigateToReader(it)
+                            }
                         },
                         onContextMenu = { file, shelfId ->
                             contextMenuFile = file
@@ -1767,11 +1776,11 @@ fun HomeScreen(
                         Box {
                             if (pagerState.currentPage == 0) {
                                 FloatingActionButton(
-                                    onClick = { sortExpanded = true },
+                                    onClick = { },
                                     containerColor = MaterialTheme.colorScheme.secondaryContainer,
                                     contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                                     shape = CircleShape,
-                                    modifier = Modifier.size(48.dp),
+                                    modifier = Modifier.size(48.dp).bounceClick { sortExpanded = true },
                                     elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp)
                                 ) {
                                     Icon(
@@ -1826,11 +1835,11 @@ fun HomeScreen(
                                 }
                             } else if (pagerState.currentPage == 1) {
                                 FloatingActionButton(
-                                    onClick = { sortExpanded = true },
+                                    onClick = { },
                                     containerColor = MaterialTheme.colorScheme.secondaryContainer,
                                     contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                                     shape = CircleShape,
-                                    modifier = Modifier.size(48.dp),
+                                    modifier = Modifier.size(48.dp).bounceClick { sortExpanded = true },
                                     elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp)
                                 ) {
                                     Icon(Icons.Default.FilterList, contentDescription = "Sort/Filter")
@@ -1919,13 +1928,13 @@ fun HomeScreen(
 
                         if (pagerState.currentPage == 0) {
                             FloatingActionButton(
-                                onClick = { 
-                                    filePickerLauncher.launch(arrayOf("*/*"))
+                                onClick = {},
+                                modifier = Modifier.size(48.dp).bounceClick { 
+                                    filePickerLauncher.launch(arrayOf("application/pdf", "application/epub+zip", "text/plain", "image/png", "image/jpeg", "image/webp", "image/bmp", "application/rar", "application/x-rar-compressed", "application/zip", "application/x-cbz", "application/x-cbr", "application/x-7z-compressed"))
                                 },
                                 containerColor = MaterialTheme.colorScheme.primary,
                                 contentColor = Color.White,
                                 shape = CircleShape,
-                                modifier = Modifier.size(48.dp),
                                 elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp)
                             ) {
                                 Icon(Icons.Default.Add, contentDescription = "Add Book")
@@ -1933,11 +1942,11 @@ fun HomeScreen(
                         } else if (pagerState.currentPage == 1) {
                             if (!isBookshelfAssignmentMode) {
                                 FloatingActionButton(
-                                    onClick = { isBookshelfAssignmentMode = true },
+                                    onClick = {},
                                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                                     contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                                     shape = CircleShape,
-                                    modifier = Modifier.size(48.dp),
+                                    modifier = Modifier.size(48.dp).bounceClick { isBookshelfAssignmentMode = true },
                                     elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp)
                                 ) {
                                     Icon(Icons.Default.SyncAlt, contentDescription = "Assignment Mode")

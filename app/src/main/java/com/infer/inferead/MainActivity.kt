@@ -63,13 +63,10 @@ class MainActivity : ComponentActivity() {
                         modifier = Modifier.fillMaxSize(),
                         color = MaterialTheme.colorScheme.background
                     ) {
-                        @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
-                        CompositionLocalProvider(androidx.compose.foundation.LocalOverscrollConfiguration provides null) {
-                            AppNavigation(
-                                pendingUri = pendingUri,
-                                onUriHandled = { pendingIntentUri.value = null }
-                            )
-                        }
+                        AppNavigation(
+                            pendingUri = pendingUri,
+                            onUriHandled = { pendingIntentUri.value = null }
+                        )
                     }
                 }
             }
