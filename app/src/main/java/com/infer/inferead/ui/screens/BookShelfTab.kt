@@ -361,23 +361,58 @@ fun BookShelfTab(
                         ) {
                             Icon(Icons.Default.Add, contentDescription = "Add Files", modifier = Modifier.size(36.dp), tint = MaterialTheme.colorScheme.primary)
                             
-                            DropdownMenu(expanded = showPickerMenu, onDismissRequest = { showPickerMenu = false }) {
-                                DropdownMenuItem(
-                                    text = { Text("Select Folder") },
-                                    onClick = { 
-                                        showPickerMenu = false
-                                        addFileTargetShelfId = null
-                                        massImportFolderLauncher.launch(null) 
+                            if (showPickerMenu) {
+                                @OptIn(ExperimentalMaterial3Api::class)
+                                ModalBottomSheet(
+                                    onDismissRequest = { showPickerMenu = false },
+                                    sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+                                ) {
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Icon(Icons.Default.Add, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(48.dp))
+                                        Spacer(modifier = Modifier.height(16.dp))
+                                        Text("Import Files", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                                        Spacer(modifier = Modifier.height(32.dp))
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                        ) {
+                                            androidx.compose.material3.ElevatedCard(
+                                                onClick = {
+                                                    showPickerMenu = false
+                                                    addFileTargetShelfId = null
+                                                    massImportFolderLauncher.launch(null) 
+                                                },
+                                                modifier = Modifier.weight(1f).height(100.dp),
+                                                shape = RoundedCornerShape(16.dp)
+                                            ) {
+                                                Column(modifier = Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                                                    Icon(Icons.Default.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                                    Spacer(modifier = Modifier.height(8.dp))
+                                                    Text("Select Folder", fontWeight = FontWeight.Bold)
+                                                }
+                                            }
+                                            androidx.compose.material3.ElevatedCard(
+                                                onClick = {
+                                                    showPickerMenu = false
+                                                    addFileTargetShelfId = null
+                                                    massImportFilesLauncher.launch(arrayOf("*/*")) 
+                                                },
+                                                modifier = Modifier.weight(1f).height(100.dp),
+                                                shape = RoundedCornerShape(16.dp)
+                                            ) {
+                                                Column(modifier = Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                                                    Icon(Icons.Default.InsertDriveFile, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                                    Spacer(modifier = Modifier.height(8.dp))
+                                                    Text("Select Files", fontWeight = FontWeight.Bold)
+                                                }
+                                            }
+                                        }
+                                        Spacer(modifier = Modifier.height(32.dp))
                                     }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("Select Files") },
-                                    onClick = { 
-                                        showPickerMenu = false
-                                        addFileTargetShelfId = null
-                                        massImportFilesLauncher.launch(arrayOf("*/*")) 
-                                    }
-                                )
+                                }
                             }
                         }
                     }
@@ -431,21 +466,56 @@ fun BookShelfTab(
                             IconButton(onClick = { showSystemMenu = true }) {
                                 Icon(Icons.Default.Add, contentDescription = "Add system files")
                             }
-                            DropdownMenu(expanded = showSystemMenu, onDismissRequest = { showSystemMenu = false }) {
-                                DropdownMenuItem(
-                                    text = { Text("Select Folder") },
-                                    onClick = { 
-                                        showSystemMenu = false
-                                        massImportFolderLauncher.launch(null) 
+                            if (showSystemMenu) {
+                                @OptIn(ExperimentalMaterial3Api::class)
+                                ModalBottomSheet(
+                                    onDismissRequest = { showSystemMenu = false },
+                                    sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+                                ) {
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Icon(Icons.Default.Add, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(48.dp))
+                                        Spacer(modifier = Modifier.height(16.dp))
+                                        Text("Import Files", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                                        Spacer(modifier = Modifier.height(32.dp))
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                        ) {
+                                            androidx.compose.material3.ElevatedCard(
+                                                onClick = {
+                                                    showSystemMenu = false
+                                                    massImportFolderLauncher.launch(null) 
+                                                },
+                                                modifier = Modifier.weight(1f).height(100.dp),
+                                                shape = RoundedCornerShape(16.dp)
+                                            ) {
+                                                Column(modifier = Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                                                    Icon(Icons.Default.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                                    Spacer(modifier = Modifier.height(8.dp))
+                                                    Text("Select Folder", fontWeight = FontWeight.Bold)
+                                                }
+                                            }
+                                            androidx.compose.material3.ElevatedCard(
+                                                onClick = {
+                                                    showSystemMenu = false
+                                                    massImportFilesLauncher.launch(arrayOf("*/*")) 
+                                                },
+                                                modifier = Modifier.weight(1f).height(100.dp),
+                                                shape = RoundedCornerShape(16.dp)
+                                            ) {
+                                                Column(modifier = Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                                                    Icon(Icons.Default.InsertDriveFile, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                                    Spacer(modifier = Modifier.height(8.dp))
+                                                    Text("Select Files", fontWeight = FontWeight.Bold)
+                                                }
+                                            }
+                                        }
+                                        Spacer(modifier = Modifier.height(32.dp))
                                     }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("Select Files") },
-                                    onClick = { 
-                                        showSystemMenu = false
-                                        massImportFilesLauncher.launch(arrayOf("*/*")) 
-                                    }
-                                )
+                                }
                             }
                         }
                     }
@@ -659,19 +729,56 @@ fun BookshelfRow(
                     var showRenameDialog by remember { mutableStateOf(false) }
                     var showColorDialog by remember { mutableStateOf(false) }
 
-                    DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-                        DropdownMenuItem(
-                            text = { Text("Rename") },
-                            onClick = { showRenameDialog = true; showMenu = false }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Change Color") },
-                            onClick = { showColorDialog = true; showMenu = false }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Delete") },
-                            onClick = { viewModel.deleteBookshelf(shelf.id); showMenu = false }
-                        )
+                    if (showMenu) {
+                        @OptIn(ExperimentalMaterial3Api::class)
+                        ModalBottomSheet(
+                            onDismissRequest = { showMenu = false },
+                            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+                        ) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    Icon(Icons.Default.MenuBook, contentDescription = null, tint = parsedColor, modifier = Modifier.size(32.dp))
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Text(shelf.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
+                                Spacer(modifier = Modifier.height(32.dp))
+                                
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceEvenly
+                                ) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { showRenameDialog = true; showMenu = false }) {
+                                        Box(modifier = Modifier.size(56.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
+                                            Icon(Icons.Default.Edit, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                        }
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Text("Rename", style = MaterialTheme.typography.labelMedium)
+                                    }
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { showColorDialog = true; showMenu = false }) {
+                                        Box(modifier = Modifier.size(56.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
+                                            Icon(Icons.Default.ColorLens, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                        }
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Text("Color", style = MaterialTheme.typography.labelMedium)
+                                    }
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { viewModel.deleteBookshelf(shelf.id); showMenu = false }) {
+                                        Box(modifier = Modifier.size(56.dp).clip(CircleShape).background(MaterialTheme.colorScheme.errorContainer), contentAlignment = Alignment.Center) {
+                                            Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+                                        }
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Text("Delete", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(32.dp))
+                            }
+                        }
                     }
 
                     if (showRenameDialog) {

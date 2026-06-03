@@ -10,6 +10,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.ui.draw.alpha
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -339,7 +340,7 @@ fun HomeScreen(
         drawerContent = {
             ModalDrawerSheet(
                 drawerContainerColor = MaterialTheme.colorScheme.surface,
-                modifier = Modifier.width(280.dp)
+                modifier = Modifier.width(280.dp).alpha(if (drawerState.currentValue == androidx.compose.material3.DrawerValue.Closed && drawerState.targetValue == androidx.compose.material3.DrawerValue.Closed) 0f else 1f)
             ) {
                 Column(modifier = Modifier.fillMaxHeight()) {
                     Spacer(Modifier.height(24.dp))
@@ -2484,59 +2485,109 @@ fun HomeScreen(
         )
     }
 
+    @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
     if (downloadDialogFile != null) {
-        AlertDialog(
+        androidx.compose.material3.ModalBottomSheet(
             onDismissRequest = { downloadDialogFile = null },
-            title = { Text("Download") },
-            text = { Text("Choose a download option for ${downloadDialogFile!!.title}") },
-            confirmButton = {
-                TextButton(onClick = {
-                    viewModel.exportFile(context, downloadDialogFile!!, modified = true)
-                    downloadDialogFile = null
-                }) {
-                    Text("With Modifications")
+            sheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.primary)
+                Spacer(modifier = Modifier.height(16.dp))
+                Text("Download File", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = downloadDialogFile!!.title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(32.dp))
+                
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    OutlinedButton(
+                        onClick = {
+                            viewModel.exportFile(context, downloadDialogFile!!, modified = false)
+                            downloadDialogFile = null
+                        },
+                        modifier = Modifier.weight(1f).height(56.dp),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Text("Original")
+                    }
+                    Button(
+                        onClick = {
+                            viewModel.exportFile(context, downloadDialogFile!!, modified = true)
+                            downloadDialogFile = null
+                        },
+                        modifier = Modifier.weight(1f).height(56.dp),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Text("With Modifications")
+                    }
                 }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    viewModel.exportFile(context, downloadDialogFile!!, modified = false)
-                    downloadDialogFile = null
-                }) {
-                    Text("Original")
-                }
+                Spacer(modifier = Modifier.height(32.dp))
             }
-        )
+        }
     }
 
+    @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
     if (formatSelectionDialogFile != null) {
         val actionType = if (formatSelectionDialogIsShare) "Share" else "Download"
-        AlertDialog(
+        val icon = if (formatSelectionDialogIsShare) Icons.Default.Share else Icons.Default.Download
+        androidx.compose.material3.ModalBottomSheet(
             onDismissRequest = { formatSelectionDialogFile = null },
-            title = { Text(actionType) },
-            text = {
-                Column {
-                    Text("Select format for ${formatSelectionDialogFile!!.title}:")
-                    Spacer(modifier = Modifier.height(8.dp))
+            sheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(icon, contentDescription = null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.primary)
+                Spacer(modifier = Modifier.height(16.dp))
+                Text("$actionType Format", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Select a format for ${formatSelectionDialogFile!!.title}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(32.dp))
+                
+                @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+                androidx.compose.foundation.layout.FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
                     listOf("PDF", "TXT", "IMG(JPG)").forEach { format ->
-                        TextButton(
+                        androidx.compose.material3.ElevatedCard(
                             onClick = {
                                 viewModel.convertCodeFile(context, formatSelectionDialogFile!!, format, formatSelectionDialogIsShare)
                                 formatSelectionDialogFile = null
                             },
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.padding(horizontal = 4.dp).size(width = 100.dp, height = 80.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = androidx.compose.material3.CardDefaults.elevatedCardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                            )
                         ) {
-                            Text(format)
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Text(format, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                            }
                         }
                     }
                 }
-            },
-            confirmButton = {},
-            dismissButton = {
-                TextButton(onClick = { formatSelectionDialogFile = null }) {
-                    Text("Cancel")
-                }
+                Spacer(modifier = Modifier.height(32.dp))
             }
-        )
+        }
     }
 }
 

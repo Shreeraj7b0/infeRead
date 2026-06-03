@@ -632,11 +632,10 @@ fun SettingsScreen(
                   )
                   val sections = listOf(
                       "E-Books" to listOf("EPUB"),
-                      "Documents" to listOf("PDF", "DOC", "DOCX"),
-                      "Comics & Manga" to listOf("CBZ", "CBR", "CB7"),
-                      "Plain Text" to listOf("TXT"),
-                      "Source Code" to listOf("KT", "JAVA", "PY", "HTML", "JS", "C", "CPP", "JSON"),
-                      "Images" to listOf("JPG", "JPEG", "PNG", "WEBP")
+                      "Documents" to listOf("PDF", "TXT", "DOC", "DOCX"),
+                      "Comics & Manga" to listOf("CBZ", "CBR", "CB7", "ZIP", "RAR", "7Z"),
+                      "Source Code" to listOf("MD", "PY", "C", "JAVA", "JS", "CSS"),
+                      "Images" to listOf("JPG", "PNG", "WEBP", "HEIC", "BMP", "SVG")
                   )
                   val pagerState = androidx.compose.foundation.pager.rememberPagerState(pageCount = { sections.size }, initialPage = 0)
                   
@@ -653,6 +652,7 @@ fun SettingsScreen(
                       Card(
                           modifier = Modifier
                               .fillMaxWidth()
+                              .height(140.dp)
                               .padding(horizontal = 8.dp)
                               .graphicsLayer {
                                   scaleX = scale
@@ -664,8 +664,9 @@ fun SettingsScreen(
                           elevation = CardDefaults.cardElevation(defaultElevation = if (page == pagerState.currentPage) 8.dp else 0.dp)
                       ) {
                           Column(
-                              modifier = Modifier.padding(16.dp).fillMaxWidth(),
-                              horizontalAlignment = Alignment.CenterHorizontally
+                              modifier = Modifier.padding(16.dp).fillMaxSize(),
+                              horizontalAlignment = Alignment.CenterHorizontally,
+                              verticalArrangement = Arrangement.Center
                           ) {
                               val (title, formats) = sections[page]
                               Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
@@ -705,7 +706,7 @@ fun SettingsScreen(
                         modifier = Modifier.padding(top = 4.dp, bottom = 8.dp)
                     )
                     Text(
-                        "First Print - Version 1.1",
+                        "Second Edition - Version 1.1",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                     )
