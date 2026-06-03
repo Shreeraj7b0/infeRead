@@ -77,7 +77,11 @@ fun AppNavigation(
         composable(
             route = "reader/{fileId}",
             arguments = listOf(navArgument("fileId") { type = NavType.IntType }),
-            deepLinks = listOf(navDeepLink { uriPattern = "inferead://reader/{fileId}" })
+            deepLinks = listOf(navDeepLink { uriPattern = "inferead://reader/{fileId}" }),
+            popExitTransition = { androidx.compose.animation.slideOutHorizontally(
+                targetOffsetX = { it },
+                animationSpec = androidx.compose.animation.core.tween(250)
+            ) }
         ) { backStackEntry ->
             val fileId = backStackEntry.arguments?.getInt("fileId") ?: return@composable
             ReaderScreen(

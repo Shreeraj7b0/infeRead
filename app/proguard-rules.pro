@@ -7,8 +7,14 @@
 # For more details, see
 #   http://developer.android.com/guide/developing/tools/proguard.html
 
-# Keep Room compiler generated classes
--keep class * extends androidx.room.RoomDatabase
+# Keep Room compiler generated classes and constructors
+-keep class * extends androidx.room.RoomDatabase {
+    <init>();
+}
+-keep class **_Impl {
+    <init>();
+}
+-keep class androidx.work.impl.** { *; }
 -dontwarn androidx.room.RoomDatabase
 
 # Apache Commons Compress

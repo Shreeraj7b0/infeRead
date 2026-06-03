@@ -159,7 +159,7 @@ fun BookShelfTab(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            "Bookshelves empty.\nCreate one using + icon",
+                            "Double-tap to add a bookshelf",
                             color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center
                         )
