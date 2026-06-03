@@ -1156,8 +1156,8 @@ fun ReaderScreen(
                                                 },
                                                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                                                 onClick = { 
-                                                    val query = android.net.Uri.encode(sel.text)
-                                                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://www.google.com/search?q=$query"))
+                                                    val intent = android.content.Intent(android.content.Intent.ACTION_WEB_SEARCH)
+                                                    intent.putExtra(android.app.SearchManager.QUERY, sel.text)
                                                     context.startActivity(intent)
                                                     textSelectionData = null
                                                 }

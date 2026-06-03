@@ -633,16 +633,16 @@ fun SettingsScreen(
                   val sections = listOf(
                       "E-Books" to listOf("EPUB"),
                       "Documents" to listOf("PDF", "TXT", "DOC", "DOCX"),
-                      "Comics & Manga" to listOf("CBZ", "CBR", "CB7", "ZIP", "RAR", "7Z"),
+                      "Comics & Manga" to listOf("CBZ", "CBR", "CB7"),
                       "Source Code" to listOf("MD", "PY", "C", "JAVA", "JS", "CSS"),
-                      "Images" to listOf("JPG", "PNG", "WEBP", "HEIC", "BMP", "SVG")
+                      "Images" to listOf("JPG", "PNG", "WEBP", "HEIC", "HEIF", "BMP", "SVG")
                   )
                   val pagerState = androidx.compose.foundation.pager.rememberPagerState(pageCount = { sections.size }, initialPage = 0)
                   
                   androidx.compose.foundation.pager.HorizontalPager(
                       state = pagerState,
                       contentPadding = PaddingValues(horizontal = 64.dp),
-                      modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp)
+                      modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
                   ) { page ->
                       val pageOffset = (pagerState.currentPage - page) + pagerState.currentPageOffsetFraction
                       val fraction = 1f - Math.abs(pageOffset).coerceIn(0f, 1f)
@@ -652,7 +652,6 @@ fun SettingsScreen(
                       Card(
                           modifier = Modifier
                               .fillMaxWidth()
-                              .height(140.dp)
                               .padding(horizontal = 8.dp)
                               .graphicsLayer {
                                   scaleX = scale
@@ -664,28 +663,47 @@ fun SettingsScreen(
                           elevation = CardDefaults.cardElevation(defaultElevation = if (page == pagerState.currentPage) 8.dp else 0.dp)
                       ) {
                           Column(
-                              modifier = Modifier.padding(16.dp).fillMaxSize(),
-                              horizontalAlignment = Alignment.CenterHorizontally,
-                              verticalArrangement = Arrangement.Center
+                              modifier = Modifier.padding(horizontal = 16.dp, vertical = 20.dp).fillMaxWidth(),
+                              horizontalAlignment = Alignment.CenterHorizontally
                           ) {
                               val (title, formats) = sections[page]
                               Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                               Spacer(Modifier.height(12.dp))
                               @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
                               androidx.compose.foundation.layout.FlowRow(
-                                  horizontalArrangement = Arrangement.Center,
-                                  verticalArrangement = Arrangement.spacedBy(4.dp)
+                                  horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
+                                  verticalArrangement = Arrangement.spacedBy(6.dp),
+                                  modifier = Modifier.fillMaxWidth()
                               ) {
                                   formats.forEach { fmt ->
                                       androidx.compose.material3.AssistChip(
                                           onClick = { },
-                                          label = { Text(fmt, fontSize = 10.sp) },
-                                          modifier = Modifier.padding(horizontal = 2.dp),
+                                          label = { Text(fmt, fontSize = 11.sp, maxLines = 1) },
+                                          modifier = Modifier.padding(horizontal = 1.dp),
                                           shape = RoundedCornerShape(6.dp)
                                       )
                                   }
                               }
                           }
+                      }
+                  }
+                  
+                  // Page indicator dots
+                  Row(
+                      modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp),
+                      horizontalArrangement = Arrangement.Center
+                  ) {
+                      repeat(sections.size) { index ->
+                          Box(
+                              modifier = Modifier
+                                  .padding(horizontal = 3.dp)
+                                  .size(if (index == pagerState.currentPage) 8.dp else 6.dp)
+                                  .background(
+                                      if (index == pagerState.currentPage) MaterialTheme.colorScheme.primary
+                                      else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
+                                      CircleShape
+                                  )
+                          )
                       }
                   }
                   

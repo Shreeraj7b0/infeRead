@@ -41,6 +41,7 @@ import com.infer.inferead.ui.modifiers.bounceClick
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -102,8 +103,14 @@ fun HomeScreen(
     val homePrefs = remember { context.getSharedPreferences("home_prefs", android.content.Context.MODE_PRIVATE) }
     val readerPrefs = remember { context.getSharedPreferences("reader_settings", android.content.Context.MODE_PRIVATE) }
     
-    val drawerState = remember { DrawerState(initialValue = DrawerValue.Closed) }
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
+    // Gate flag: prevents drawer from flashing on navigation entry
+    var drawerReady by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        drawerState.snapTo(DrawerValue.Closed)
+        drawerReady = true
+    }
     val libraryFiles by viewModel.libraryFiles.collectAsState()
     val checklists by viewModel.checklists.collectAsState()
     val currentUser by viewModel.currentUser.collectAsState()
@@ -341,44 +348,73 @@ fun HomeScreen(
         drawerContent = {
             ModalDrawerSheet(
                 drawerContainerColor = MaterialTheme.colorScheme.surface,
-                modifier = Modifier.width(280.dp).alpha(if (drawerState.currentValue == androidx.compose.material3.DrawerValue.Closed && drawerState.targetValue == androidx.compose.material3.DrawerValue.Closed) 0f else 1f)
+                modifier = Modifier.width(300.dp).alpha(if (!drawerReady || (drawerState.currentValue == DrawerValue.Closed && drawerState.targetValue == DrawerValue.Closed)) 0f else 1f)
             ) {
                 Column(modifier = Modifier.fillMaxHeight()) {
                     Spacer(Modifier.height(24.dp))
+                    // Header
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            "infeRead Library",
-                            style = MaterialTheme.typography.titleLarge.copy(
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary,
-                                letterSpacing = 0.5.sp
-                            )
-                        )
-                        IconButton(
-                            onClick = { showCreateChecklistDialog = true },
-                            modifier = Modifier.size(28.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Add,
-                                contentDescription = "Create Checklist",
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(20.dp)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier.size(36.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(
+                                        Brush.linearGradient(
+                                            colors = listOf(
+                                                MaterialTheme.colorScheme.primary,
+                                                MaterialTheme.colorScheme.tertiary
+                                            )
+                                        )
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.AutoStories,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            Spacer(Modifier.width(12.dp))
+                            Text(
+                                "infeRead",
+                                style = MaterialTheme.typography.titleLarge.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    letterSpacing = (-0.5).sp
+                                )
                             )
                         }
+                        Surface(
+                            onClick = { showCreateChecklistDialog = true },
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.Add,
+                                    contentDescription = "Create Checklist",
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
                     }
-                    Divider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+                    Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                     Spacer(modifier = Modifier.height(12.dp))
                     
+                    Spacer(modifier = Modifier.height(8.dp))
                     NavigationDrawerItem(
                         label = { Text("My Library", fontWeight = FontWeight.SemiBold) },
                         selected = activeChecklistId == null,
                         icon = { 
                             Icon(
-                                Icons.Default.MenuBook, 
+                                Icons.Default.AutoStories, 
                                 contentDescription = null, 
                                 tint = if (activeChecklistId == null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                             ) 
@@ -387,16 +423,16 @@ fun HomeScreen(
                             activeChecklistId = null
                             scope.launch { drawerState.close() } 
                         },
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp).height(48.dp),
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp).height(48.dp),
                         shape = RoundedCornerShape(12.dp),
                         colors = NavigationDrawerItemDefaults.colors(
-                            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f),
+                            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
                             unselectedContainerColor = Color.Transparent,
                             selectedTextColor = MaterialTheme.colorScheme.primary,
                             unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(4.dp))
                     
                     val bookmarkedFiles = remember(libraryFiles) { libraryFiles.filter { it.isBookmarked } }
                     val readingListFiles = remember(libraryFiles) { libraryFiles.filter { it.isToRead } }
@@ -409,12 +445,13 @@ fun HomeScreen(
                     ) {
                         item {
                             Text(
-                                "Checklists",
+                                "CHECKLISTS",
                                 style = MaterialTheme.typography.labelSmall.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                    letterSpacing = 1.5.sp
                                 ),
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
                             )
                         }
                         items(checklists, key = { "drawer_checklist_${it.id}" }) { checklist ->
@@ -424,14 +461,32 @@ fun HomeScreen(
                             } catch (e: Exception) {
                                 MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f)
                             }
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(40.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(
-                                        if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f) else Color.Transparent
+                            NavigationDrawerItem(
+                                label = { 
+                                    Text(
+                                        text = checklist.name,
+                                        style = MaterialTheme.typography.bodyMedium.copy(
+                                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
+                                        ),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
+                                },
+                                selected = isSelected,
+                                icon = {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(10.dp)
+                                            .background(checklistColor, CircleShape)
+                                    )
+                                },
+                                onClick = {
+                                    activeChecklistId = checklist.id
+                                    scope.launch { drawerState.close() }
+                                },
+                                modifier = Modifier
+                                    .padding(horizontal = 4.dp, vertical = 1.dp)
+                                    .height(42.dp)
                                     .combinedClickable(
                                         onClick = {
                                             activeChecklistId = checklist.id
@@ -440,29 +495,15 @@ fun HomeScreen(
                                         onLongClick = {
                                             contextMenuChecklist = checklist
                                         }
-                                    )
-                                    .padding(horizontal = 8.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(8.dp)
-                                        .background(checklistColor, CircleShape)
-                                )
-                                Text(
-                                    text = checklist.name,
-                                    style = MaterialTheme.typography.bodyMedium.copy(
-                                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-                                        fontSize = 14.sp
                                     ),
-                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.weight(1f)
+                                shape = RoundedCornerShape(10.dp),
+                                colors = NavigationDrawerItemDefaults.colors(
+                                    selectedContainerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f),
+                                    unselectedContainerColor = Color.Transparent,
+                                    selectedTextColor = MaterialTheme.colorScheme.primary,
+                                    unselectedTextColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
                                 )
-                            }
-                            Spacer(modifier = Modifier.height(2.dp))
+                            )
                         }
                         
                         if (pagerState.currentPage == 0) {
@@ -541,28 +582,28 @@ fun HomeScreen(
                                                 }
                                             )
                                             Text(
-                                                text = getSectionDisplayName(sectionName),
-                                                style = MaterialTheme.typography.labelMedium.copy(
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = MaterialTheme.colorScheme.primary
+                                                text = getSectionDisplayName(sectionName).uppercase(),
+                                                style = MaterialTheme.typography.labelSmall.copy(
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                                    letterSpacing = 1.2.sp
                                                 ),
                                                 modifier = Modifier.weight(1f)
                                             )
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(24.dp)
-                                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), CircleShape)
-                                                    .border(1.dp, MaterialTheme.colorScheme.onBackground.copy(alpha = 0.1f), CircleShape)
-                                                    .clickable { toggleMinimiseSection(sectionName) },
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                Icon(
-                                                    imageVector = if (isCategoryMinimised) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowUp,
-                                                    contentDescription = if (isCategoryMinimised) "Expand" else "Collapse",
-                                                    tint = MaterialTheme.colorScheme.primary,
-                                                    modifier = Modifier.size(16.dp)
-                                                )
-                                            }
+                                            Text(
+                                                text = "${filesForCategory.size}",
+                                                style = MaterialTheme.typography.labelSmall.copy(
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                                                ),
+                                                modifier = Modifier.padding(end = 4.dp)
+                                            )
+                                            Icon(
+                                                imageVector = if (isCategoryMinimised) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowUp,
+                                                contentDescription = if (isCategoryMinimised) "Expand" else "Collapse",
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                                modifier = Modifier.size(18.dp).clickable { toggleMinimiseSection(sectionName) }
+                                            )
                                         }
                                         
                                         AnimatedVisibility(
@@ -575,8 +616,8 @@ fun HomeScreen(
                                                     Row(
                                                         modifier = Modifier
                                                             .fillMaxWidth()
-                                                            .height(36.dp)
-                                                            .clip(RoundedCornerShape(6.dp))
+                                                            .height(40.dp)
+                                                            .clip(RoundedCornerShape(10.dp))
                                                             .combinedClickable(
                                                                 onClick = {
                                                                     scope.launch { 
@@ -588,14 +629,14 @@ fun HomeScreen(
                                                                     contextMenuFile = file
                                                                 }
                                                             )
-                                                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                                                            .padding(horizontal = 12.dp, vertical = 8.dp),
                                                         verticalAlignment = Alignment.CenterVertically,
-                                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                                                     ) {
                                                         Icon(
                                                             imageVector = Icons.Default.Description,
                                                             contentDescription = null,
-                                                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                                                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
                                                             modifier = Modifier.size(16.dp)
                                                         )
                                                         Text(
@@ -604,13 +645,13 @@ fun HomeScreen(
                                                                 fontWeight = FontWeight.Normal,
                                                                 fontSize = 13.sp
                                                             ),
-                                                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
+                                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
                                                             maxLines = 1,
                                                             overflow = TextOverflow.Ellipsis,
                                                             modifier = Modifier.weight(1f)
                                                         )
                                                     }
-                                                    Spacer(modifier = Modifier.height(4.dp))
+                                                    Spacer(modifier = Modifier.height(2.dp))
                                                 }
                                             }
                                         }
@@ -665,37 +706,48 @@ fun HomeScreen(
                                             }
                                         )
                                         Text(
-                                            text = shelf.name,
-                                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, color = shelfColor),
-                                            modifier = Modifier.weight(1f)
+                                            text = shelf.name.uppercase(),
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = shelfColor.copy(alpha = 0.8f),
+                                                letterSpacing = 1.2.sp
+                                            ),
+                                            modifier = Modifier.weight(1f),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
                                         )
                                         var isMinimised by remember { mutableStateOf(shelf.isMinimised) }
-                                        Box(
-                                            modifier = Modifier
-                                                .size(24.dp)
-                                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), CircleShape)
-                                                .clickable { isMinimised = !isMinimised; viewModel.updateBookshelfMinimised(shelf.id, isMinimised) },
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Icon(if (isMinimised) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowUp, null, tint = shelfColor, modifier = Modifier.size(16.dp))
-                                        }
+                                        Text(
+                                            text = "${shelfFiles.size}",
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                                            ),
+                                            modifier = Modifier.padding(end = 4.dp)
+                                        )
+                                        Icon(
+                                            imageVector = if (isMinimised) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowUp,
+                                            contentDescription = null,
+                                            tint = shelfColor.copy(alpha = 0.6f),
+                                            modifier = Modifier.size(18.dp).clickable { isMinimised = !isMinimised; viewModel.updateBookshelfMinimised(shelf.id, isMinimised) }
+                                        )
                                     }
                                     AnimatedVisibility(visible = !shelf.isMinimised) {
                                         Column(modifier = Modifier.fillMaxWidth()) {
                                             shelfFiles.forEach { file ->
                                                 Row(
-                                                    modifier = Modifier.fillMaxWidth().height(36.dp).clip(RoundedCornerShape(6.dp))
+                                                    modifier = Modifier.fillMaxWidth().height(40.dp).clip(RoundedCornerShape(10.dp))
                                                         .combinedClickable(
                                                             onClick = { scope.launch { drawerState.close(); onNavigateToReader(file.id) } },
                                                             onLongClick = { contextMenuFile = file }
-                                                        ).padding(horizontal = 8.dp, vertical = 6.dp),
+                                                        ).padding(horizontal = 12.dp, vertical = 8.dp),
                                                     verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                                                 ) {
-                                                    Icon(Icons.Default.Description, null, tint = shelfColor.copy(alpha=0.7f), modifier = Modifier.size(16.dp))
-                                                    Text(file.title, style = MaterialTheme.typography.bodySmall.copy(fontSize=13.sp), color = MaterialTheme.colorScheme.onBackground.copy(alpha=0.7f), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                                                    Icon(Icons.Default.Description, null, tint = shelfColor.copy(alpha=0.5f), modifier = Modifier.size(16.dp))
+                                                    Text(file.title, style = MaterialTheme.typography.bodySmall.copy(fontSize=13.sp), color = MaterialTheme.colorScheme.onSurface.copy(alpha=0.75f), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                                                 }
-                                                Spacer(Modifier.height(4.dp))
+                                                Spacer(Modifier.height(2.dp))
                                             }
                                         }
                                     }
@@ -707,10 +759,11 @@ fun HomeScreen(
                         if (bookmarkedFiles.isNotEmpty()) {
                             item {
                                 Text(
-                                    text = "⭐ Bookmarked",
-                                    style = MaterialTheme.typography.labelMedium.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color(0xFFFFC107)
+                                    text = "⭐ BOOKMARKED",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color(0xFFFFC107).copy(alpha = 0.8f),
+                                        letterSpacing = 1.2.sp
                                     ),
                                     modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)
                                 )
@@ -752,10 +805,11 @@ fun HomeScreen(
                         if (readingListFiles.isNotEmpty()) {
                             item {
                                 Text(
-                                    text = "📖 Reading List",
-                                    style = MaterialTheme.typography.labelMedium.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.tertiary
+                                    text = "📖 READING LIST",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.8f),
+                                        letterSpacing = 1.2.sp
                                     ),
                                     modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)
                                 )
@@ -799,59 +853,86 @@ fun HomeScreen(
                         }
                     }
                     
-                    Divider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
-                    Spacer(Modifier.height(8.dp))
+                    Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                    Spacer(Modifier.height(12.dp))
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 8.dp, vertical = 8.dp),
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Compact Tab Toggle
-                        Row(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(50))
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                                .padding(4.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                        // Polished Tab Toggle
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                            modifier = Modifier.weight(1f, fill = false)
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(50))
-                                    .background(if (pagerState.currentPage == 0) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
-                                    .clickable { scope.launch { pagerState.animateScrollToPage(0) } }
-                                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                            Row(
+                                modifier = Modifier.padding(3.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text("Library", style = MaterialTheme.typography.labelMedium.copy(fontWeight = if (pagerState.currentPage == 0) FontWeight.Bold else FontWeight.Normal, color = if (pagerState.currentPage == 0) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface))
-                            }
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(50))
-                                    .background(if (pagerState.currentPage == 1) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
-                                    .clickable { scope.launch { pagerState.animateScrollToPage(1) } }
-                                    .padding(horizontal = 12.dp, vertical = 6.dp)
-                            ) {
-                                Text("BookShelf", style = MaterialTheme.typography.labelMedium.copy(fontWeight = if (pagerState.currentPage == 1) FontWeight.Bold else FontWeight.Normal, color = if (pagerState.currentPage == 1) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface))
+                                Surface(
+                                    onClick = { scope.launch { pagerState.animateScrollToPage(0) } },
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = if (pagerState.currentPage == 0) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.AutoStories, null,
+                                            tint = if (pagerState.currentPage == 0) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Text("Library", style = MaterialTheme.typography.labelMedium.copy(fontWeight = if (pagerState.currentPage == 0) FontWeight.Bold else FontWeight.Normal, color = if (pagerState.currentPage == 0) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant))
+                                    }
+                                }
+                                Spacer(Modifier.width(2.dp))
+                                Surface(
+                                    onClick = { scope.launch { pagerState.animateScrollToPage(1) } },
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = if (pagerState.currentPage == 1) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.CollectionsBookmark, null,
+                                            tint = if (pagerState.currentPage == 1) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Text("Shelf", style = MaterialTheme.typography.labelMedium.copy(fontWeight = if (pagerState.currentPage == 1) FontWeight.Bold else FontWeight.Normal, color = if (pagerState.currentPage == 1) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant))
+                                    }
+                                }
                             }
                         }
 
-                        IconButton(
+                        Spacer(Modifier.width(8.dp))
+                        Surface(
                             onClick = { 
                                 scope.launch { drawerState.close() }
                                 onNavigateToSettings()
                             },
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
                             modifier = Modifier.size(40.dp)
                         ) {
-                            Icon(
-                                Icons.Default.Settings,
-                                contentDescription = "Settings",
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(24.dp)
-                            )
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    Icons.Default.Settings,
+                                    contentDescription = "Settings",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
                         }
                     }
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(12.dp))
                 }
             }
         }
