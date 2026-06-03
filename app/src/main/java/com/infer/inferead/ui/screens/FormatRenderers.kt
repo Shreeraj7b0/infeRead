@@ -1654,7 +1654,7 @@ fun EPUBReader(
                                 }
                                 body {
                                     color: $textColor !important;
-                                    font-family: $fontFamily, sans-serif !important;
+                                    ${if (fontFamily != "Original") "font-family: $fontFamily, sans-serif !important;" else ""}
                                     font-size: ${fontSize}px !important;
                                     background-color: transparent !important;
                                     line-height: ${1.6f * settings.lineSpacingMultiplier} !important;
@@ -1663,14 +1663,14 @@ fun EPUBReader(
                                 }
                                 p, div, span:not(.inferead-annotation), a, li, blockquote, h1, h2, h3, h4, h5, h6 {
                                     color: $textColor !important;
-                                    font-family: $fontFamily, sans-serif !important;
+                                    ${if (fontFamily != "Original") "font-family: $fontFamily, sans-serif !important;" else ""}
                                     background-color: transparent !important;
                                     $boldRule
                                     $positionOverride
                                 }
                                 .inferead-annotation {
                                     color: $textColor !important;
-                                    font-family: $fontFamily, sans-serif !important;
+                                    ${if (fontFamily != "Original") "font-family: $fontFamily, sans-serif !important;" else ""}
                                     $boldRule
                                 }
                                 $ocrHideCss

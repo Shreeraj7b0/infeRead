@@ -82,11 +82,105 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     private val _convertingFileName = MutableStateFlow<String?>(null)
     val convertingFileName = _convertingFileName.asStateFlow()
 
+    private val _massImportProgress = MutableStateFlow(0)
+    val massImportProgress = _massImportProgress.asStateFlow()
+
+    private val _massImportTotal = MutableStateFlow(0)
+    val massImportTotal = _massImportTotal.asStateFlow()
+
+    private val _isMassImporting = MutableStateFlow(false)
+    val isMassImporting = _isMassImporting.asStateFlow()
+
+    private val _isMassImportPaused = MutableStateFlow(false)
+    val isMassImportPaused = _isMassImportPaused.asStateFlow()
+
+    private var massImportJob: Job? = null
+
     private var conversionJob: Job? = null
 
     suspend fun importFile(uri: Uri): Int? {
         val fileId = repository.importFile(uri)
         return fileId?.toInt()
+    }
+
+    fun massImportFolder(treeUri: Uri, context: android.content.Context, targetBookshelfId: Int?) {
+        if (_isMassImporting.value) return
+        _isMassImporting.value = true
+        _massImportProgress.value = 0
+        _isMassImportPaused.value = false
+        
+        massImportJob = viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val docId = android.provider.DocumentsContract.getTreeDocumentId(treeUri)
+                val childrenUri = android.provider.DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, docId)
+                val uris = mutableListOf<Uri>()
+                context.contentResolver.query(
+                    childrenUri,
+                    arrayOf(android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID),
+                    null, null, null
+                )?.use { cursor ->
+                    while (cursor.moveToNext()) {
+                        val documentId = cursor.getString(0)
+                        val fileUri = android.provider.DocumentsContract.buildDocumentUriUsingTree(treeUri, documentId)
+                        uris.add(fileUri)
+                    }
+                }
+                
+                _massImportTotal.value = uris.size
+                for ((index, uri) in uris.withIndex()) {
+                    while (_isMassImportPaused.value && isActive) {
+                        delay(500)
+                    }
+                    if (!isActive) break
+                    
+                    val importedId = repository.importFile(uri)?.toInt()
+                    if (importedId != null && targetBookshelfId != null) {
+                        repository.addFileToBookshelf(targetBookshelfId, importedId)
+                    }
+                    _massImportProgress.value = index + 1
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                _isMassImporting.value = false
+            }
+        }
+    }
+
+    fun massImportFiles(uris: List<Uri>, targetBookshelfId: Int?) {
+        if (_isMassImporting.value) return
+        _isMassImporting.value = true
+        _massImportProgress.value = 0
+        _massImportTotal.value = uris.size
+        _isMassImportPaused.value = false
+        
+        massImportJob = viewModelScope.launch(Dispatchers.IO) {
+            try {
+                for ((index, uri) in uris.withIndex()) {
+                    while (_isMassImportPaused.value && isActive) {
+                        delay(500)
+                    }
+                    if (!isActive) break
+                    
+                    val importedId = repository.importFile(uri)?.toInt()
+                    if (importedId != null && targetBookshelfId != null) {
+                        repository.addFileToBookshelf(targetBookshelfId, importedId)
+                    }
+                    _massImportProgress.value = index + 1
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                _isMassImporting.value = false
+            }
+        }
+    }
+    
+    fun pauseMassImport() { _isMassImportPaused.value = true }
+    fun resumeMassImport() { _isMassImportPaused.value = false }
+    fun cancelMassImport() { 
+        massImportJob?.cancel() 
+        _isMassImporting.value = false
     }
 
     fun updateThumbnail(fileId: Int, imageUri: Uri) {

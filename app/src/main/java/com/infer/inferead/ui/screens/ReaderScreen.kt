@@ -796,7 +796,7 @@ fun ReaderScreen(
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                     modifier = Modifier.padding(bottom = 16.dp, end = 16.dp)
                 ) {
-                    val allAnns by viewModel.getAnnotationsForFile(fileId).collectAsState(initial = emptyList<com.infer.inferead.data.Annotation>())
+                    val allAnns by remember(fileId) { viewModel.getAnnotationsForFile(fileId) }.collectAsState(initial = emptyList<com.infer.inferead.data.Annotation>())
                     val pageAnns by androidx.compose.runtime.remember(allAnns, currentFile?.currentPage, currentFile?.format) {
                         androidx.compose.runtime.derivedStateOf {
                             val index = currentFile?.currentPage ?: 0
@@ -1430,7 +1430,7 @@ fun ReaderScreen(
 
             // Page Scrubber Overlay Dialog
             if (showScrubber && currentFile != null && currentFile!!.totalPages > 0) {
-                var scrubbingPage by remember(showScrubber, currentFile?.currentPage) {
+                var scrubbingPage by remember(showScrubber) {
                     mutableFloatStateOf(currentFile?.currentPage?.toFloat() ?: 1f)
                 }
                 val previewListState = rememberLazyListState()
@@ -1926,6 +1926,7 @@ fun ReaderScreen(
                     )
                     
                     val devanagariFonts = listOf(
+                        "Original" to FontFamily.Default,
                         "Amita" to FontFamily(androidx.compose.ui.text.font.Font("fonts/amita.ttf", context.assets)),
                         "Hind" to FontFamily(androidx.compose.ui.text.font.Font("fonts/hind.ttf", context.assets)),
                         "Yatra One" to FontFamily(androidx.compose.ui.text.font.Font("fonts/yatra_one.ttf", context.assets))
@@ -2098,6 +2099,7 @@ fun ReaderScreen(
                     )
                     
                     val devanagariFonts = listOf(
+                        "Original" to FontFamily.Default,
                         "Amita" to FontFamily(androidx.compose.ui.text.font.Font("fonts/amita.ttf", context.assets)),
                         "Hind" to FontFamily(androidx.compose.ui.text.font.Font("fonts/hind.ttf", context.assets)),
                         "Yatra One" to FontFamily(androidx.compose.ui.text.font.Font("fonts/yatra_one.ttf", context.assets))
@@ -2248,7 +2250,7 @@ fun ReaderScreen(
     }
 
     val showAnnotationManager by viewModel.showAnnotationManager.collectAsState()
-    val allAnns by viewModel.getAnnotationsForFile(fileId).collectAsState(initial = emptyList<com.infer.inferead.data.Annotation>())
+    val allAnns by remember(fileId) { viewModel.getAnnotationsForFile(fileId) }.collectAsState(initial = emptyList<com.infer.inferead.data.Annotation>())
     if (showAnnotationManager && currentFile != null) {
         AnnotationManagerDialog(
             file = currentFile!!,

@@ -232,6 +232,22 @@ class FileRepository(private val context: Context, private val dao: InfeReadDao)
     }
 
     suspend fun renameFile(fileId: Int, newTitle: String) = withContext(Dispatchers.IO) {
+        val file = dao.getLibraryFileById(fileId) ?: return@withContext
+        val oldFile = File(file.filePath)
+        if (oldFile.exists()) {
+            val extension = oldFile.extension
+            val parent = oldFile.parentFile
+            val prefix = oldFile.name.substringBefore("_")
+            val newName = if (prefix.toLongOrNull() != null) {
+                "${prefix}_$newTitle" + if (extension.isNotEmpty()) ".$extension" else ""
+            } else {
+                newTitle + if (extension.isNotEmpty()) ".$extension" else ""
+            }
+            val newFile = File(parent, newName)
+            if (oldFile.renameTo(newFile)) {
+                dao.updateFilePath(fileId, newFile.absolutePath)
+            }
+        }
         dao.renameFile(fileId, newTitle)
     }
 

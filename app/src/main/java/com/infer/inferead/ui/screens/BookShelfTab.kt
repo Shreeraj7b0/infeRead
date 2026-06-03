@@ -8,6 +8,11 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import org.burnoutcrew.reorderable.rememberReorderableLazyListState
+import org.burnoutcrew.reorderable.reorderable
+import org.burnoutcrew.reorderable.ReorderableItem
+import org.burnoutcrew.reorderable.detectReorderAfterLongPress
+import androidx.compose.ui.draw.shadow
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -43,7 +48,9 @@ fun BookShelfTab(
     bookshelfItems: List<BookshelfItem>,
     libraryFiles: List<LibraryFile>,
     onNavigateToReader: (Int) -> Unit,
-    onContextMenu: (LibraryFile, Int?) -> Unit, // Int? = bookshelf ID if in a shelf
+    onNavigateToSettings: () -> Unit,
+    onNavigateToStats: () -> Unit,
+    onContextMenu: (LibraryFile, Int?) -> Unit,
     bookshelfSortMode: Int,
     bookshelfViewMode: Int,
     onSortModeChange: (Int) -> Unit,
@@ -51,12 +58,13 @@ fun BookShelfTab(
     isAssignmentMode: Boolean,
     onToggleAssignmentMode: () -> Unit
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val density = androidx.compose.ui.platform.LocalDensity.current
     var activeBookshelfOrder by remember { mutableStateOf(emptyList<Bookshelf>()) }
-    var draggedShelfIndex by remember { mutableStateOf<Int?>(null) }
-    
+    var isBookshelfDragging by remember { mutableStateOf(false) }
+
     LaunchedEffect(bookshelves, bookshelfItems, bookshelfSortMode) {
-        if (draggedShelfIndex == null) {
+        if (!isBookshelfDragging) {
             activeBookshelfOrder = when (bookshelfSortMode) {
                 0 -> bookshelves.sortedBy { it.name.lowercase() }
                 1 -> bookshelves.sortedByDescending { it.name.lowercase() }
@@ -67,8 +75,20 @@ fun BookShelfTab(
         }
     }
 
-    // Drag state for SHELF reordering
-    var shelfDragOffsetY by remember { mutableFloatStateOf(0f) }
+    val reorderState = rememberReorderableLazyListState(
+        onMove = { from, to ->
+            isBookshelfDragging = true
+            activeBookshelfOrder = activeBookshelfOrder.toMutableList().apply {
+                add(to.index, removeAt(from.index))
+            }
+        },
+        onDragEnd = { _, _ ->
+            isBookshelfDragging = false
+            viewModel.updateBookshelvesOrder(
+                activeBookshelfOrder.mapIndexed { idx, s -> s.copy(sortOrder = idx) }
+            )
+        }
+    )
 
     // Drag state for FILE assignment
     var draggedFileId by remember { mutableStateOf<Int?>(null) }
@@ -85,6 +105,33 @@ fun BookShelfTab(
     // Add-file-to-shelf dialog
     var showAddFileDialog by remember { mutableStateOf(false) }
     var addFileTargetShelfId by remember { mutableStateOf<Int?>(null) }
+    
+    val massImportFolderLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree()
+    ) { uri: android.net.Uri? ->
+        uri?.let {
+            try { context.contentResolver.takePersistableUriPermission(it, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (e: SecurityException) {}
+            viewModel.massImportFolder(it, context, addFileTargetShelfId)
+            showAddFileDialog = false
+            addFileTargetShelfId = null
+        }
+    }
+
+    val massImportFilesLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris: List<android.net.Uri> ->
+        if (uris.isNotEmpty()) {
+            uris.forEach { try { context.contentResolver.takePersistableUriPermission(it, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (e: SecurityException) {} }
+            viewModel.massImportFiles(uris, addFileTargetShelfId)
+            showAddFileDialog = false
+            addFileTargetShelfId = null
+        }
+    }
+    
+    val isMassImporting by viewModel.isMassImporting.collectAsState()
+    val massImportProgress by viewModel.massImportProgress.collectAsState()
+    val massImportTotal by viewModel.massImportTotal.collectAsState()
+    val isMassImportPaused by viewModel.isMassImportPaused.collectAsState()
 
     var rootPosition by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
 
@@ -99,7 +146,8 @@ fun BookShelfTab(
             }
     ) {
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
+            state = reorderState.listState,
+            modifier = Modifier.fillMaxSize().reorderable(reorderState),
             contentPadding = PaddingValues(bottom = if (isAssignmentMode) 200.dp else 80.dp)
         ) {
             if (bookshelves.isEmpty()) {
@@ -120,80 +168,38 @@ fun BookShelfTab(
             }
 
             items(activeBookshelfOrder, key = { it.id }) { shelf ->
-                val index = activeBookshelfOrder.indexOf(shelf)
-                val isDraggingThis = draggedShelfIndex == index
-                val itemsInShelf = bookshelfItems.filter { it.bookshelfId == shelf.id }.sortedBy { it.sortOrder }
-                val filesInShelf = itemsInShelf.mapNotNull { item -> libraryFiles.find { it.id == item.fileId } }
+                val itemsInShelf = remember(bookshelfItems, shelf.id) { bookshelfItems.filter { it.bookshelfId == shelf.id }.sortedBy { it.sortOrder } }
+                val filesInShelf = remember(itemsInShelf, libraryFiles) { itemsInShelf.mapNotNull { item -> libraryFiles.find { it.id == item.fileId } } }
 
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .animateItemPlacement()
-                        .graphicsLayer {
-                            if (isDraggingThis) translationY = shelfDragOffsetY
-                            shadowElevation = if (isDraggingThis) 8.dp.toPx() else 0f
-                        }
-                        .zIndex(if (isDraggingThis) 10f else 1f)
-                        .onGloballyPositioned { coords ->
-                            shelfBounds[shelf.id] = coords.boundsInWindow()
-                        }
-                ) {
-                    BookshelfRow(
-                        shelf = shelf,
-                        files = filesInShelf,
-                        onNavigateToReader = onNavigateToReader,
-                        onContextMenu = { file -> onContextMenu(file, shelf.id) },
-                        viewModel = viewModel,
-                        viewMode = bookshelfViewMode,
-                        isAssignmentMode = isAssignmentMode,
-                        onShelfDragStart = {
-                            val currIdx = activeBookshelfOrder.indexOfFirst { it.id == shelf.id }
-                            if (currIdx != -1) {
-                                draggedShelfIndex = currIdx
-                                shelfDragOffsetY = 0f
-                            }
-                        },
-                        onShelfDrag = { change, amount ->
-                            change.consume()
-                            shelfDragOffsetY += amount.y
-                            if (bookshelfSortMode != -1) onSortModeChange(-1)
-                            
-                            val currentIndex = draggedShelfIndex
-                            if (currentIndex != null) {
-                                val thresholdPx = with(density) { 40.dp.toPx() }
-                                
-                                if (shelfDragOffsetY > thresholdPx && currentIndex < activeBookshelfOrder.size - 1) {
-                                    val newList = activeBookshelfOrder.toMutableList()
-                                    val temp = newList[currentIndex]
-                                    newList[currentIndex] = newList[currentIndex + 1]
-                                    newList[currentIndex + 1] = temp
-                                    activeBookshelfOrder = newList
-                                    draggedShelfIndex = currentIndex + 1
-                                    shelfDragOffsetY = 0f
-                                } else if (shelfDragOffsetY < -thresholdPx && currentIndex > 0) {
-                                    val newList = activeBookshelfOrder.toMutableList()
-                                    val temp = newList[currentIndex]
-                                    newList[currentIndex] = newList[currentIndex - 1]
-                                    newList[currentIndex - 1] = temp
-                                    activeBookshelfOrder = newList
-                                    draggedShelfIndex = currentIndex - 1
-                                    shelfDragOffsetY = 0f
-                                }
-                            }
-                        },
-                        onShelfDragEnd = { 
-                            draggedShelfIndex = null
-                            shelfDragOffsetY = 0f
-                            viewModel.updateBookshelvesOrder(
-                                activeBookshelfOrder.mapIndexed { idx, s -> s.copy(sortOrder = idx) }
+                ReorderableItem(reorderState, key = shelf.id) { isDraggingThis ->
+                    val elevation = if (isDraggingThis) 8.dp else 0.dp
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .shadow(elevation, RoundedCornerShape(8.dp))
+                            .background(
+                                if (isDraggingThis) MaterialTheme.colorScheme.surfaceVariant else Color.Transparent,
+                                RoundedCornerShape(8.dp)
                             )
-                        },
-                        onFileDragStart = { fileId, globalPos ->
-                            draggedFileId = fileId
-                            draggedFromShelfId = shelf.id
-                            fileDragX = globalPos.x
-                            fileDragY = globalPos.y
-                        },
+                            .onGloballyPositioned { coords ->
+                                shelfBounds[shelf.id] = coords.boundsInWindow()
+                            }
+                    ) {
+                        BookshelfRow(
+                            shelf = shelf,
+                            files = filesInShelf,
+                            onNavigateToReader = onNavigateToReader,
+                            onContextMenu = { file -> onContextMenu(file, shelf.id) },
+                            viewModel = viewModel,
+                            viewMode = bookshelfViewMode,
+                            isAssignmentMode = isAssignmentMode,
+                            dragModifier = Modifier.detectReorderAfterLongPress(reorderState),
+                            onFileDragStart = { fileId, globalPos ->
+                                draggedFileId = fileId
+                                draggedFromShelfId = shelf.id
+                                fileDragX = globalPos.x
+                                fileDragY = globalPos.y
+                            },
                         onFileDrag = { change, amount ->
                             change.consume()
                             fileDragX += amount.x
@@ -203,7 +209,6 @@ fun BookShelfTab(
                             val fid = draggedFileId
                             val fromShelf = draggedFromShelfId
                             if (fid != null && fromShelf != null && fromShelf != -1) {
-                                // Hit-test against all shelf bounds
                                 val targetShelf = shelfBounds.entries.firstOrNull { (sid, rect) ->
                                     sid != fromShelf && rect.contains(
                                         androidx.compose.ui.geometry.Offset(fileDragX, fileDragY)
@@ -229,9 +234,10 @@ fun BookShelfTab(
                     )
                 }
             }
+        }
 
             item {
-                ReadingGoalWidget(viewModel = viewModel, onNavigateToStats = {})
+                ReadingGoalWidget(viewModel = viewModel, onNavigateToStats = onNavigateToStats)
             }
         }
 
@@ -248,6 +254,7 @@ fun BookShelfTab(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .pointerInput(Unit) {}
                     .padding(8.dp)
             ) {
                 Row(
@@ -265,24 +272,22 @@ fun BookShelfTab(
                         Icon(Icons.Default.Close, contentDescription = "Close")
                     }
                 }
+                val unassignedFiles = remember(bookshelfItems, libraryFiles) {
+                    val assignedIds = bookshelfItems.map { it.fileId }.toSet()
+                    libraryFiles.filter { it.id !in assignedIds }
+                }
                 LazyRow(
-                    contentPadding = PaddingValues(horizontal = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(130.dp)
+                    modifier = Modifier.padding(vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    contentPadding = PaddingValues(horizontal = 16.dp)
                 ) {
-                    items(libraryFiles, key = { it.id }) { file ->
-                        val isDraggingThis = draggedFileId == file.id && draggedFromShelfId == -1
+                    items(unassignedFiles, key = { it.id }) { file ->
                         var globalPosition by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
                         Box(
                             modifier = Modifier
                                 .width(70.dp)
-                                .fillMaxHeight()
-                                .onGloballyPositioned { coordinates ->
-                                    globalPosition = coordinates.positionInWindow()
-                                }
-                                .zIndex(if (isDraggingThis) 10f else 1f)
+                                .height(130.dp)
+                                .onGloballyPositioned { coordinates -> globalPosition = coordinates.positionInWindow() }
                                 .pointerInput(file.id) {
                                     detectDragGesturesAfterLongPress(
                                         onDragStart = {
@@ -300,9 +305,7 @@ fun BookShelfTab(
                                             val fid = draggedFileId
                                             if (fid != null) {
                                                 val targetShelf = shelfBounds.entries.firstOrNull { (_, rect) ->
-                                                    rect.contains(
-                                                        androidx.compose.ui.geometry.Offset(fileDragX, fileDragY)
-                                                    )
+                                                    rect.contains(androidx.compose.ui.geometry.Offset(fileDragX, fileDragY))
                                                 }?.key
                                                 if (targetShelf != null) {
                                                     viewModel.addFileToBookshelf(targetShelf, fid)
@@ -310,7 +313,6 @@ fun BookShelfTab(
                                                     fileToAssignOnCreate = fid
                                                     showCreateDialog = true
                                                 }
-                                                // else dropped in empty space -> no action (already in library)
                                             }
                                             draggedFileId = null
                                             draggedFromShelfId = null
@@ -341,6 +343,40 @@ fun BookShelfTab(
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier.padding(top = 4.dp)
+                                )
+                            }
+                        }
+                    }
+                    
+                    item {
+                        var showPickerMenu by remember { mutableStateOf(false) }
+                        Box(
+                            modifier = Modifier
+                                .width(70.dp)
+                                .height(130.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f))
+                                .clickable { showPickerMenu = true },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = "Add Files", modifier = Modifier.size(36.dp), tint = MaterialTheme.colorScheme.primary)
+                            
+                            DropdownMenu(expanded = showPickerMenu, onDismissRequest = { showPickerMenu = false }) {
+                                DropdownMenuItem(
+                                    text = { Text("Select Folder") },
+                                    onClick = { 
+                                        showPickerMenu = false
+                                        addFileTargetShelfId = null
+                                        massImportFolderLauncher.launch(null) 
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Select Files") },
+                                    onClick = { 
+                                        showPickerMenu = false
+                                        addFileTargetShelfId = null
+                                        massImportFilesLauncher.launch(arrayOf("*/*")) 
+                                    }
                                 )
                             }
                         }
@@ -383,7 +419,37 @@ fun BookShelfTab(
             val alreadyInShelf = bookshelfItems.filter { it.bookshelfId == targetId }.map { it.fileId }.toSet()
             AlertDialog(
                 onDismissRequest = { showAddFileDialog = false; addFileTargetShelfId = null },
-                title = { Text("Add files to shelf") },
+                title = { 
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Add files to shelf")
+                        var showSystemMenu by remember { mutableStateOf(false) }
+                        Box {
+                            IconButton(onClick = { showSystemMenu = true }) {
+                                Icon(Icons.Default.Add, contentDescription = "Add system files")
+                            }
+                            DropdownMenu(expanded = showSystemMenu, onDismissRequest = { showSystemMenu = false }) {
+                                DropdownMenuItem(
+                                    text = { Text("Select Folder") },
+                                    onClick = { 
+                                        showSystemMenu = false
+                                        massImportFolderLauncher.launch(null) 
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Select Files") },
+                                    onClick = { 
+                                        showSystemMenu = false
+                                        massImportFilesLauncher.launch(arrayOf("*/*")) 
+                                    }
+                                )
+                            }
+                        }
+                    }
+                },
                 text = {
                     Column {
                         val eligible = libraryFiles.filter { it.id !in alreadyInShelf }
@@ -420,6 +486,44 @@ fun BookShelfTab(
                     TextButton(onClick = { showAddFileDialog = false; addFileTargetShelfId = null }) {
                         Text("Cancel")
                     }
+                }
+            )
+        }
+
+        // ── Mass Import Progress Dialog ──────────────────────────────────────────
+        if (isMassImporting) {
+            AlertDialog(
+                onDismissRequest = {}, // prevent dismissing by tapping outside
+                title = { Text("Importing Files") },
+                text = {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        if (massImportTotal > 0) {
+                            val percent = if (massImportTotal > 0) ((massImportProgress.toFloat() / massImportTotal) * 100).toInt() else 0
+                            Text("Progress: $massImportProgress / $massImportTotal ($percent%)")
+                            Spacer(Modifier.height(16.dp))
+                            androidx.compose.material3.LinearProgressIndicator(
+                                progress = if (massImportTotal > 0) massImportProgress.toFloat() / massImportTotal else 0f,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        } else {
+                            Text("Scanning folder...")
+                            Spacer(Modifier.height(16.dp))
+                            androidx.compose.material3.CircularProgressIndicator()
+                        }
+                    }
+                },
+                confirmButton = {
+                    if (isMassImportPaused) {
+                        TextButton(onClick = { viewModel.resumeMassImport() }) { Text("Resume") }
+                    } else {
+                        TextButton(onClick = { viewModel.pauseMassImport() }) { Text("Pause") }
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { viewModel.cancelMassImport() }) { Text("Cancel") }
                 }
             )
         }
@@ -478,9 +582,7 @@ fun BookshelfRow(
     viewModel: HomeViewModel,
     viewMode: Int,
     isAssignmentMode: Boolean,
-    onShelfDragStart: (androidx.compose.ui.geometry.Offset) -> Unit,
-    onShelfDrag: (androidx.compose.ui.input.pointer.PointerInputChange, androidx.compose.ui.geometry.Offset) -> Unit,
-    onShelfDragEnd: () -> Unit,
+    dragModifier: Modifier = Modifier,
     onFileDragStart: ((Int, androidx.compose.ui.geometry.Offset) -> Unit)? = null,
     onFileDrag: ((androidx.compose.ui.input.pointer.PointerInputChange, androidx.compose.ui.geometry.Offset) -> Unit)? = null,
     onFileDragEnd: (() -> Unit)? = null,
@@ -511,14 +613,7 @@ fun BookshelfRow(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .weight(1f)
-                    .pointerInput(shelf.id) {
-                        detectDragGesturesAfterLongPress(
-                            onDragStart = onShelfDragStart,
-                            onDrag = onShelfDrag,
-                            onDragEnd = onShelfDragEnd,
-                            onDragCancel = onShelfDragEnd
-                        )
-                    }
+                    .then(dragModifier)
             ) {
                 // 6-dot drag indicator coloured to match shelf
                 Icon(

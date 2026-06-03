@@ -1,4 +1,4 @@
-package com.infer.inferead.ui.screens
+﻿package com.infer.inferead.ui.screens
 
 import android.net.Uri
 import android.content.Intent
@@ -22,7 +22,6 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import org.burnoutcrew.reorderable.rememberReorderableLazyListState
@@ -118,7 +117,8 @@ fun HomeScreen(
     }
     
     val pagerState = androidx.compose.foundation.pager.rememberPagerState(initialPage = homePrefs.getInt("active_tab", 0), pageCount = { 2 })
-    LaunchedEffect(pagerState.currentPage) { homePrefs.edit().putInt("active_tab", pagerState.currentPage).apply() }
+    val activeTab = pagerState.currentPage
+    LaunchedEffect(activeTab) { homePrefs.edit().putInt("active_tab", activeTab).apply() }
     val bookshelves by viewModel.bookshelves.collectAsState()
     val bookshelfItems by viewModel.bookshelfItems.collectAsState()
     var isBookshelfAssignmentMode by remember { mutableStateOf(false) }
@@ -151,8 +151,6 @@ fun HomeScreen(
     
     var draggedSectionIndex by remember { mutableStateOf<Int?>(null) }
     var dragOffsetY by remember { mutableStateOf(0f) }
-
-    var renamingFile by remember { mutableStateOf<com.infer.inferead.data.LibraryFile?>(null) }
     
     var searchQuery by remember { mutableStateOf("") }
     var searchExpanded by remember { mutableStateOf(false) }
@@ -228,18 +226,18 @@ fun HomeScreen(
             SegregationMode.READING_LIST -> listOf("Reading List")
         }
     }
-    var fileSizes by remember { mutableStateOf(mapOf<Int, Long>()) }
-    LaunchedEffect(filteredFiles) {
-        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            fileSizes = filteredFiles.associate { it.id to (try { java.io.File(it.filePath).length() } catch (e: Exception) { 0L }) }
-        }
-    }
     
     val groupedFiles = remember(filteredFiles, segregationMode) {
         when (segregationMode) {
             SegregationMode.FORMAT -> filteredFiles.groupBy { it.format }
             SegregationMode.PAGES -> mapOf("By Pages (Desc)" to filteredFiles.sortedByDescending { it.totalPages })
-            SegregationMode.FILE_SIZE -> mapOf("By File Size (Desc)" to filteredFiles.sortedByDescending { fileSizes[it.id] ?: 0L })
+            SegregationMode.FILE_SIZE -> mapOf("By File Size (Desc)" to filteredFiles.sortedByDescending { 
+                try {
+                    java.io.File(it.filePath).length()
+                } catch (e: Exception) {
+                    0L
+                }
+            })
             SegregationMode.BOOKMARKED -> mapOf("Bookmarked" to filteredFiles.filter { it.isBookmarked })
             SegregationMode.READING_LIST -> mapOf("Reading List" to filteredFiles.filter { it.isToRead })
         }
@@ -393,9 +391,6 @@ fun HomeScreen(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     
-                    val bookmarkedFiles = remember(libraryFiles) { libraryFiles.filter { it.isBookmarked } }
-                    val readingListFiles = remember(libraryFiles) { libraryFiles.filter { it.isToRead } }
-
                     LazyColumn(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -460,7 +455,7 @@ fun HomeScreen(
                             Spacer(modifier = Modifier.height(2.dp))
                         }
                         
-                        if (pagerState.currentPage == 0) {
+                        if (activeTab == 0) {
                             items(sectionOrder.filter { it != "Checklists" }, key = { "nav_$it" }) { sectionName ->
                             val filesForCategory = groupedFiles[sectionName] ?: emptyList()
                             if (filesForCategory.isNotEmpty()) {
@@ -611,10 +606,10 @@ fun HomeScreen(
                                 }
                             }
                             }
-                        } else if (pagerState.currentPage == 1) {
+                        } else if (activeTab == 1) {
                             items(bookshelves.sortedBy { it.sortOrder }, key = { "nav_bookshelf_${it.id}" }) { shelf ->
-                                val itemsInShelf = remember(bookshelfItems, shelf.id) { bookshelfItems.filter { it.bookshelfId == shelf.id } }
-                                val shelfFiles = remember(itemsInShelf, libraryFiles) { itemsInShelf.mapNotNull { bItem -> libraryFiles.find { it.id == bItem.fileId } } }
+                                val itemsInShelf = bookshelfItems.filter { it.bookshelfId == shelf.id }
+                                val shelfFiles = itemsInShelf.mapNotNull { bItem -> libraryFiles.find { it.id == bItem.fileId } }
                                 val shelfColor = try { Color(android.graphics.Color.parseColor(shelf.colorHex)) } catch(e:Exception){ MaterialTheme.colorScheme.primary }
                                 
                                 Column(modifier = Modifier.fillMaxWidth()) {
@@ -697,10 +692,11 @@ fun HomeScreen(
                         }
 
                         // Special section: Bookmarked Files
+                        val bookmarkedFiles = libraryFiles.filter { it.isBookmarked }
                         if (bookmarkedFiles.isNotEmpty()) {
                             item {
                                 Text(
-                                    text = "⭐ Bookmarked",
+                                    text = "Γ¡É Bookmarked",
                                     style = MaterialTheme.typography.labelMedium.copy(
                                         fontWeight = FontWeight.Bold,
                                         color = Color(0xFFFFC107)
@@ -740,10 +736,11 @@ fun HomeScreen(
                         }
 
                         // Special section: Reading List
+                        val readingListFiles = libraryFiles.filter { it.isToRead }
                         if (readingListFiles.isNotEmpty()) {
                             item {
                                 Text(
-                                    text = "📖 Reading List",
+                                    text = "≡ƒôû Reading List",
                                     style = MaterialTheme.typography.labelMedium.copy(
                                         fontWeight = FontWeight.Bold,
                                         color = MaterialTheme.colorScheme.tertiary
@@ -808,20 +805,20 @@ fun HomeScreen(
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(50))
-                                    .background(if (pagerState.currentPage == 0) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
+                                    .background(if (activeTab == 0) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
                                     .clickable { scope.launch { pagerState.animateScrollToPage(0) } }
                                     .padding(horizontal = 12.dp, vertical = 6.dp)
                             ) {
-                                Text("Library", style = MaterialTheme.typography.labelMedium.copy(fontWeight = if (pagerState.currentPage == 0) FontWeight.Bold else FontWeight.Normal, color = if (pagerState.currentPage == 0) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface))
+                                Text("Library", style = MaterialTheme.typography.labelMedium.copy(fontWeight = if (activeTab == 0) FontWeight.Bold else FontWeight.Normal, color = if (activeTab == 0) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface))
                             }
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(50))
-                                    .background(if (pagerState.currentPage == 1) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
+                                    .background(if (activeTab == 1) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
                                     .clickable { scope.launch { pagerState.animateScrollToPage(1) } }
                                     .padding(horizontal = 12.dp, vertical = 6.dp)
                             ) {
-                                Text("BookShelf", style = MaterialTheme.typography.labelMedium.copy(fontWeight = if (pagerState.currentPage == 1) FontWeight.Bold else FontWeight.Normal, color = if (pagerState.currentPage == 1) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface))
+                                Text("BookShelf", style = MaterialTheme.typography.labelMedium.copy(fontWeight = if (activeTab == 1) FontWeight.Bold else FontWeight.Normal, color = if (activeTab == 1) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface))
                             }
                         }
 
@@ -859,7 +856,7 @@ fun HomeScreen(
                                 }
                                 val toggleTheme = com.infer.inferead.LocalThemeToggle.current
                                 TextButton(onClick = { toggleTheme() }) {
-                                    Text("🌓", fontSize = 18.sp)
+                                    Text("≡ƒîô", fontSize = 18.sp)
                                 }
                             }
                         },
@@ -871,34 +868,26 @@ fun HomeScreen(
                         colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = Color.Transparent)
                     )
                     TabRow(
-                        selectedTabIndex = if (activeChecklistId != null) 0 else pagerState.currentPage,
+                        selectedTabIndex = if (activeChecklistId != null) -1 else activeTab,
                         containerColor = Color.Transparent,
                         contentColor = MaterialTheme.colorScheme.primary,
-                        indicator = { tabPositions ->
-                            if (activeChecklistId == null && pagerState.currentPage >= 0 && pagerState.currentPage < tabPositions.size) {
-                                TabRowDefaults.Indicator(
-                                    modifier = Modifier.tabIndicatorOffset(tabPositions[pagerState.currentPage]),
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                        },
                         divider = { Divider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)) }
                     ) {
                         Tab(
-                            selected = activeChecklistId == null && pagerState.currentPage == 0,
+                            selected = activeChecklistId == null && activeTab == 0,
                             onClick = { 
                                 activeChecklistId = null
                                 scope.launch { pagerState.animateScrollToPage(0) } 
                             },
-                            text = { Text("Library", fontWeight = if (activeChecklistId == null && pagerState.currentPage == 0) FontWeight.Bold else FontWeight.Normal) }
+                            text = { Text("Library", fontWeight = if (activeChecklistId == null && activeTab == 0) FontWeight.Bold else FontWeight.Normal) }
                         )
                         Tab(
-                            selected = activeChecklistId == null && pagerState.currentPage == 1,
+                            selected = activeChecklistId == null && activeTab == 1,
                             onClick = { 
                                 activeChecklistId = null
                                 scope.launch { pagerState.animateScrollToPage(1) } 
                             },
-                            text = { Text("BookShelf", fontWeight = if (activeChecklistId == null && pagerState.currentPage == 1) FontWeight.Bold else FontWeight.Normal) }
+                            text = { Text("BookShelf", fontWeight = if (activeChecklistId == null && activeTab == 1) FontWeight.Bold else FontWeight.Normal) }
                         )
                     }
                 }
@@ -1113,7 +1102,7 @@ fun HomeScreen(
                                                                   .detectReorderAfterLongPress(reorderState),
                                                               contentAlignment = Alignment.Center
                                                           ) {
-                                                              Icon(Icons.Default.DragHandle, contentDescription = "Drag Handle", modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f))
+                                                              Text("Γëí", color = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f), fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                                           }
                                                       }
 
@@ -1131,21 +1120,19 @@ fun HomeScreen(
                                                                   )
                                                               }
                                                               .pointerInput(item.id + 1000) {
-                                                                  var accumulatedDrag = 0f
                                                                   detectHorizontalDragGestures(
-                                                                      onDragStart = { accumulatedDrag = 0f },
-                                                                      onDragEnd = { accumulatedDrag = 0f },
+                                                                      onDragEnd = { },
                                                                       onHorizontalDrag = { change, dragAmount ->
                                                                           if (!isDragging) {
-                                                                              accumulatedDrag += dragAmount
-                                                                              if (accumulatedDrag > 80f) {
-                                                                                  change.consume()
-                                                                                  viewModel.updateChecklistItem(item.copy(indentLevel = minOf(3, item.indentLevel + 1)))
-                                                                                  accumulatedDrag = 0f
-                                                                              } else if (accumulatedDrag < -80f) {
-                                                                                  change.consume()
+                                                                              change.consume()
+                                                                              if (dragAmount > 20) {
+                                                                                  if (item.isCompleted) {
+                                                                                      viewModel.toggleChecklistItemCompletion(item)
+                                                                                  } else {
+                                                                                      viewModel.updateChecklistItem(item.copy(indentLevel = minOf(3, item.indentLevel + 1)))
+                                                                                  }
+                                                                              } else if (dragAmount < -20) {
                                                                                   viewModel.updateChecklistItem(item.copy(indentLevel = maxOf(0, item.indentLevel - 1)))
-                                                                                  accumulatedDrag = 0f
                                                                               }
                                                                           }
                                                                       }
@@ -1223,8 +1210,6 @@ fun HomeScreen(
                         beyondBoundsPageCount = 1,
                         flingBehavior = androidx.compose.foundation.pager.PagerDefaults.flingBehavior(
                             state = pagerState,
-                            pagerSnapDistance = androidx.compose.foundation.pager.PagerSnapDistance.atMost(1),
-                            snapPositionalThreshold = 0.35f,
                             snapAnimationSpec = androidx.compose.animation.core.tween(
                                 durationMillis = 250,
                                 easing = androidx.compose.animation.core.FastOutSlowInEasing
@@ -1663,7 +1648,7 @@ fun HomeScreen(
                                                         )
                                                         if (file.rating > 0) {
                                                             Text(
-                                                                text = "★".repeat(file.rating),
+                                                                text = "Γÿà".repeat(file.rating),
                                                                 color = Color(0xFFFFC107),
                                                                 fontSize = 12.sp
                                                             )
@@ -1676,7 +1661,7 @@ fun HomeScreen(
                                                             }
                                                             if (bookmarkCount > 0) {
                                                                 Text(
-                                                                    text = "◉ $bookmarkCount bookmark${if (bookmarkCount > 1) "s" else ""}",
+                                                                    text = "Γùë $bookmarkCount bookmark${if (bookmarkCount > 1) "s" else ""}",
                                                                     style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
                                                                     color = Color(0xFFFFC107),
                                                                     maxLines = 1
@@ -1744,9 +1729,7 @@ fun HomeScreen(
                             homePrefs.edit().putInt("bookshelf_view_mode", it).apply()
                         },
                         isAssignmentMode = isBookshelfAssignmentMode,
-                        onToggleAssignmentMode = { isBookshelfAssignmentMode = !isBookshelfAssignmentMode },
-                        onNavigateToSettings = onNavigateToSettings,
-                        onNavigateToStats = onNavigateToStats
+                        onToggleAssignmentMode = { isBookshelfAssignmentMode = !isBookshelfAssignmentMode }
                     )
                         }
                     }
@@ -1765,7 +1748,7 @@ fun HomeScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Box {
-                            if (pagerState.currentPage == 0) {
+                            if (activeTab == 0) {
                                 FloatingActionButton(
                                     onClick = { sortExpanded = true },
                                     containerColor = MaterialTheme.colorScheme.secondaryContainer,
@@ -1824,7 +1807,7 @@ fun HomeScreen(
                                         }
                                     )
                                 }
-                            } else if (pagerState.currentPage == 1) {
+                            } else if (activeTab == 1) {
                                 FloatingActionButton(
                                     onClick = { sortExpanded = true },
                                     containerColor = MaterialTheme.colorScheme.secondaryContainer,
@@ -1917,7 +1900,7 @@ fun HomeScreen(
                             }
                         )
 
-                        if (pagerState.currentPage == 0) {
+                        if (activeTab == 0) {
                             FloatingActionButton(
                                 onClick = { 
                                     filePickerLauncher.launch(arrayOf("*/*"))
@@ -1930,7 +1913,7 @@ fun HomeScreen(
                             ) {
                                 Icon(Icons.Default.Add, contentDescription = "Add Book")
                             }
-                        } else if (pagerState.currentPage == 1) {
+                        } else if (activeTab == 1) {
                             if (!isBookshelfAssignmentMode) {
                                 FloatingActionButton(
                                     onClick = { isBookshelfAssignmentMode = true },
@@ -1950,34 +1933,6 @@ fun HomeScreen(
         }
     }
 
-    // Dialogs
-    if (renamingFile != null) {
-        var newFileName by remember { mutableStateOf(renamingFile!!.title) }
-        AlertDialog(
-            onDismissRequest = { renamingFile = null },
-            title = { Text("Rename File") },
-            text = {
-                OutlinedTextField(
-                    value = newFileName,
-                    onValueChange = { newFileName = it },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    if (newFileName.isNotBlank()) {
-                        viewModel.renameFile(renamingFile!!.id, newFileName.trim())
-                    }
-                    renamingFile = null
-                }) { Text("Rename") }
-            },
-            dismissButton = {
-                TextButton(onClick = { renamingFile = null }) { Text("Cancel") }
-            }
-        )
-    }
-
     if (contextMenuFile != null) {
         ModalBottomSheet(
             onDismissRequest = { contextMenuFile = null; contextMenuFileShelfId = null },
@@ -1990,7 +1945,7 @@ fun HomeScreen(
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                     modifier = Modifier.padding(bottom = 16.dp)
                 )
-                // "Remove from Bookshelf" — only visible when opened from a bookshelf
+                // "Remove from Bookshelf" ΓÇö only visible when opened from a bookshelf
                 if (contextMenuFileShelfId != null) {
                     ListItem(
                         headlineContent = { Text("Remove from Bookshelf", color = MaterialTheme.colorScheme.error) },
@@ -2012,7 +1967,7 @@ fun HomeScreen(
                     headlineContent = { Text("Rename File") },
                     leadingContent = { Icon(Icons.Default.Edit, contentDescription = null) },
                     modifier = Modifier.clickable {
-                        renamingFile = contextMenuFile
+                        // TODO Show rename dialog
                         contextMenuFile = null; contextMenuFileShelfId = null
                     }
                 )

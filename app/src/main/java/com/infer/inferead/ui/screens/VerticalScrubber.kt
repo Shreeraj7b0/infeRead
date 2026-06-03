@@ -163,7 +163,8 @@ fun VerticalScrubber(
                     }
 
                     // Draw Thumb
-                    val thumbY = (animatedProgress * size.height).coerceIn(thumbRadius, size.height - thumbRadius)
+                    val finalProgress = if (isDragging) displayProgress else animatedProgress
+                    val thumbY = (finalProgress * size.height).coerceIn(thumbRadius, size.height - thumbRadius)
                     drawCircle(
                         color = thumbColor,
                         radius = thumbRadius,
