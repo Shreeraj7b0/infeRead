@@ -126,7 +126,7 @@ fun VerticalScrubber(
                         }
                 ) {
                     val trackWidth = 3.dp.toPx()
-                    val thumbRadius = 7.dp.toPx()
+                    val thumbRadius = 8.dp.toPx()
                     val xCenter = size.width / 2
 
                     // Draw Track

@@ -911,7 +911,9 @@ fun ReaderScreen(
                             currentPage = file.currentPage,
                             onPageChanged = { page -> viewModel.updateCurrentPage(page) },
                             onTotalPages = { total -> viewModel.updateTotalPages(total) },
-                            onTap = toggleReaderMode
+                            onTap = toggleReaderMode,
+                            targetVerticalProgress = targetVerticalProgress,
+                            onScrollProgress = { p -> verticalScrollProgress = p }
                         )
                         "TXT", "CODING" -> TXTReader(
                             filePath = file.filePath,
@@ -1319,7 +1321,7 @@ fun ReaderScreen(
                     .fillMaxSize()
                     .padding(16.dp)
             ) {
-                if (currentFile?.format in listOf("TXT", "CODING", "EPUB") && !settings.isHorizontalScroll) {
+                if (currentFile?.format in listOf("TXT", "CODING", "EPUB", "PDF") && !settings.isHorizontalScroll) {
                     val scrubberAllAnns by remember(currentFile) { viewModel.getAnnotationsForFile(currentFile?.id ?: 0) }.collectAsState(initial = emptyList())
                     val scrubberAnns = remember(scrubberAllAnns, currentFile?.currentPage, currentFile?.format) {
                         if (currentFile?.format == "EPUB") {
@@ -1621,10 +1623,18 @@ fun ReaderScreen(
                             valueRange = 1f..currentFile!!.totalPages.toFloat(),
                             steps = if (currentFile!!.totalPages > 2) currentFile!!.totalPages - 2 else 0,
                             colors = SliderDefaults.colors(
-                                thumbColor = if (bookmarkedPages.contains(scrubbingPage.roundToInt())) Color(0xFFFFC107) else if (settings.contrastMode == ContrastMode.Dark) Color(0xFF9AB0E6) else MaterialTheme.colorScheme.primary,
                                 activeTrackColor = if (settings.contrastMode == ContrastMode.Dark) Color(0xFF9AB0E6) else MaterialTheme.colorScheme.primary,
                                 inactiveTrackColor = textColor.copy(alpha = 0.24f)
                             ),
+                            thumb = {
+                                Box(
+                                    modifier = Modifier
+                                        .size(23.dp)
+                                        .shadow(2.dp, androidx.compose.foundation.shape.CircleShape)
+                                        .clip(androidx.compose.foundation.shape.CircleShape)
+                                        .background(if (bookmarkedPages.contains(scrubbingPage.roundToInt())) Color(0xFFFFC107) else if (settings.contrastMode == ContrastMode.Dark) Color(0xFF9AB0E6) else MaterialTheme.colorScheme.primary)
+                                )
+                            },
                             modifier = Modifier.fillMaxSize()
                         )
                         // Bookmark dot markers

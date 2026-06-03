@@ -228,7 +228,9 @@ fun PdfViewer(
     currentPage: Int = 1,
     onPageChanged: (Int) -> Unit = {},
     onTotalPages: (Int) -> Unit = {},
-    onTap: () -> Unit = {}
+    onTap: () -> Unit = {},
+    targetVerticalProgress: Float? = null,
+    onScrollProgress: (Float) -> Unit = {}
 ) {
     val file = File(filePath)
     if (!file.exists()) {
@@ -408,6 +410,32 @@ fun PdfViewer(
         var lastTargetPage by remember { mutableIntStateOf(-1) }
 
         val firstVisibleItem by remember { derivedStateOf { listState.firstVisibleItemIndex } }
+        val firstItemOffset by remember { derivedStateOf { listState.firstVisibleItemScrollOffset } }
+        val layoutInfo by remember { derivedStateOf { listState.layoutInfo } }
+        
+        val scrollProgress by remember(pdfRenderer.pageCount) {
+            derivedStateOf {
+                val totalItems = pdfRenderer.pageCount
+                if (totalItems <= 1) return@derivedStateOf 0f
+                val firstVisibleItemInfo = layoutInfo.visibleItemsInfo.firstOrNull()
+                val totalHeight = firstVisibleItemInfo?.size?.toFloat() ?: 1000f
+                val progress = (firstVisibleItem + (firstItemOffset / totalHeight)) / (totalItems - 1)
+                progress.coerceIn(0f, 1f)
+            }
+        }
+
+        LaunchedEffect(scrollProgress) {
+            onScrollProgress(scrollProgress)
+        }
+
+        LaunchedEffect(targetVerticalProgress) {
+            targetVerticalProgress?.let {
+                val targetPageFloat = it * (pdfRenderer.pageCount - 1)
+                val targetPage = targetPageFloat.toInt()
+                listState.scrollToItem(targetPage)
+            }
+        }
+
         LaunchedEffect(firstVisibleItem) {
             onPageChanged(firstVisibleItem + 1)
         }

@@ -19,8 +19,7 @@ import androidx.compose.ui.input.pointer.pointerInput
  * Adds a bouncing scale effect on click, similar to a rubber ball.
  */
 fun Modifier.bounceClick(
-    scaleUp: Float = 1.05f,
-    onClick: () -> Unit
+    scaleUp: Float = 1.15f
 ) = composed {
     var isPressed by remember { mutableStateOf(false) }
     val scale by animateFloatAsState(
@@ -34,19 +33,13 @@ fun Modifier.bounceClick(
             scaleX = scale
             scaleY = scale
         }
-        .clickable(
-            interactionSource = remember { MutableInteractionSource() },
-            indication = null, // Removes the default ripple if desired, or keep it by removing this arg
-            onClick = onClick
-        )
-        .pointerInput(isPressed) {
+        .pointerInput(Unit) {
             awaitPointerEventScope {
-                isPressed = if (isPressed) {
-                    waitForUpOrCancellation()
-                    false
-                } else {
+                while (true) {
                     awaitFirstDown(requireUnconsumed = false)
-                    true
+                    isPressed = true
+                    waitForUpOrCancellation()
+                    isPressed = false
                 }
             }
         }

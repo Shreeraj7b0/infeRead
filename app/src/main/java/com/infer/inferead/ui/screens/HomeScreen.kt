@@ -1776,11 +1776,11 @@ fun HomeScreen(
                         Box {
                             if (pagerState.currentPage == 0) {
                                 FloatingActionButton(
-                                    onClick = { },
+                                    onClick = { sortExpanded = true },
                                     containerColor = MaterialTheme.colorScheme.secondaryContainer,
                                     contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                                     shape = CircleShape,
-                                    modifier = Modifier.size(48.dp).bounceClick { sortExpanded = true },
+                                    modifier = Modifier.size(48.dp).bounceClick(),
                                     elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp)
                                 ) {
                                     Icon(
@@ -1835,11 +1835,11 @@ fun HomeScreen(
                                 }
                             } else if (pagerState.currentPage == 1) {
                                 FloatingActionButton(
-                                    onClick = { },
+                                    onClick = { sortExpanded = true },
                                     containerColor = MaterialTheme.colorScheme.secondaryContainer,
                                     contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                                     shape = CircleShape,
-                                    modifier = Modifier.size(48.dp).bounceClick { sortExpanded = true },
+                                    modifier = Modifier.size(48.dp).bounceClick(),
                                     elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp)
                                 ) {
                                     Icon(Icons.Default.FilterList, contentDescription = "Sort/Filter")
@@ -1928,10 +1928,10 @@ fun HomeScreen(
 
                         if (pagerState.currentPage == 0) {
                             FloatingActionButton(
-                                onClick = {},
-                                modifier = Modifier.size(48.dp).bounceClick { 
+                                onClick = { 
                                     filePickerLauncher.launch(arrayOf("application/pdf", "application/epub+zip", "text/plain", "image/png", "image/jpeg", "image/webp", "image/bmp", "application/rar", "application/x-rar-compressed", "application/zip", "application/x-cbz", "application/x-cbr", "application/x-7z-compressed"))
                                 },
+                                modifier = Modifier.size(48.dp).bounceClick(),
                                 containerColor = MaterialTheme.colorScheme.primary,
                                 contentColor = Color.White,
                                 shape = CircleShape,
@@ -1942,11 +1942,11 @@ fun HomeScreen(
                         } else if (pagerState.currentPage == 1) {
                             if (!isBookshelfAssignmentMode) {
                                 FloatingActionButton(
-                                    onClick = {},
+                                    onClick = { isBookshelfAssignmentMode = true },
                                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                                     contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                                     shape = CircleShape,
-                                    modifier = Modifier.size(48.dp).bounceClick { isBookshelfAssignmentMode = true },
+                                    modifier = Modifier.size(48.dp).bounceClick(),
                                     elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp)
                                 ) {
                                     Icon(Icons.Default.SyncAlt, contentDescription = "Assignment Mode")

@@ -81,7 +81,8 @@ fun AppNavigation(
             popExitTransition = { androidx.compose.animation.slideOutHorizontally(
                 targetOffsetX = { it },
                 animationSpec = androidx.compose.animation.core.tween(250)
-            ) }
+            ) },
+            popEnterTransition = { androidx.compose.animation.EnterTransition.None }
         ) { backStackEntry ->
             val fileId = backStackEntry.arguments?.getInt("fileId") ?: return@composable
             ReaderScreen(
