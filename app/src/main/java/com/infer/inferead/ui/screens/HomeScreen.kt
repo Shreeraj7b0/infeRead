@@ -345,6 +345,7 @@ fun HomeScreen(
 
     ModalNavigationDrawer(
         drawerState = drawerState,
+        gesturesEnabled = drawerState.isOpen,
         drawerContent = {
             ModalDrawerSheet(
                 drawerContainerColor = MaterialTheme.colorScheme.surface,
@@ -1350,16 +1351,7 @@ fun HomeScreen(
                     androidx.compose.foundation.pager.HorizontalPager(
                         state = pagerState,
                         modifier = Modifier.fillMaxSize(),
-                        beyondBoundsPageCount = 1,
-                        flingBehavior = androidx.compose.foundation.pager.PagerDefaults.flingBehavior(
-                            state = pagerState,
-                            pagerSnapDistance = androidx.compose.foundation.pager.PagerSnapDistance.atMost(1),
-                            snapPositionalThreshold = 0.35f,
-                            snapAnimationSpec = androidx.compose.animation.core.tween(
-                                durationMillis = 250,
-                                easing = androidx.compose.animation.core.FastOutSlowInEasing
-                            )
-                        )
+                        beyondBoundsPageCount = 1
                     ) { page ->
                         if (page == 0) {
                             LazyColumn(
