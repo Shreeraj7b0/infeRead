@@ -1058,101 +1058,110 @@ fun ReaderScreen(
                                 shape = RoundedCornerShape(8.dp),
                                 color = MaterialTheme.colorScheme.surface
                             ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically
+                                Column(
+                                    modifier = Modifier.padding(vertical = 8.dp).width(IntrinsicSize.Max)
                                 ) {
                                     if (showHighlightColorsForSelection) {
-                                        val colors = listOf("#FFFF00", "#00FF00", "#00FFFF", "#FF00FF", "#c25d5d")
-                                        colors.forEach { color ->
-                                            Box(
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            val colors = listOf("#FFFF00", "#00FF00", "#00FFFF", "#FF00FF", "#c25d5d")
+                                            colors.forEach { color ->
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(32.dp)
+                                                        .padding(4.dp)
+                                                        .background(Color(android.graphics.Color.parseColor(color)), CircleShape)
+                                                        .clickable {
+                                                            viewModel.insertAnnotation(
+                                                                com.infer.inferead.data.Annotation(
+                                                                    id = sel.annId ?: 0,
+                                                                    fileId = file.id,
+                                                                    selectedText = sel.text,
+                                                                    cfiRange = sel.cfiRange,
+                                                                    colorHex = color,
+                                                                    timestamp = System.currentTimeMillis()
+                                                                )
+                                                            )
+                                                            textSelectionData = null
+                                                            showHighlightColorsForSelection = false
+                                                        }
+                                                )
+                                            }
+                                        }
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp).fillMaxWidth(),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.End
+                                        ) {
+                                            if (sel.annId != null) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Delete,
+                                                    contentDescription = "Delete",
+                                                    tint = MaterialTheme.colorScheme.error,
+                                                    modifier = Modifier
+                                                        .size(32.dp)
+                                                        .padding(4.dp)
+                                                        .clickable {
+                                                            viewModel.deleteAnnotation(
+                                                                com.infer.inferead.data.Annotation(id = sel.annId!!, fileId = 0, cfiRange = "", colorHex = "")
+                                                            )
+                                                            showHighlightColorsForSelection = false
+                                                            textSelectionData = null
+                                                        }
+                                                )
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                            }
+                                            Icon(
+                                                imageVector = Icons.Default.Close, 
+                                                contentDescription = "Close Colors",
                                                 modifier = Modifier
                                                     .size(32.dp)
                                                     .padding(4.dp)
-                                                    .background(Color(android.graphics.Color.parseColor(color)), CircleShape)
-                                                    .clickable {
-                                                        viewModel.insertAnnotation(
-                                                            com.infer.inferead.data.Annotation(
-                                                                id = sel.annId ?: 0,
-                                                                fileId = file.id,
-                                                                selectedText = sel.text,
-                                                                cfiRange = sel.cfiRange,
-                                                                colorHex = color,
-                                                                timestamp = System.currentTimeMillis()
-                                                            )
-                                                        )
-                                                        textSelectionData = null
-                                                        showHighlightColorsForSelection = false
-                                                    }
+                                                    .clickable { showHighlightColorsForSelection = false }
                                             )
-                                        }
-                                        if (sel.annId != null) {
-                                            Spacer(modifier = Modifier.width(8.dp))
-                                            Icon(
-                                                imageVector = Icons.Default.Delete,
-                                                contentDescription = "Delete",
-                                                tint = MaterialTheme.colorScheme.error,
-                                                modifier = Modifier
-                                                    .size(24.dp)
-                                                    .clickable {
-                                                        viewModel.deleteAnnotation(
-                                                            com.infer.inferead.data.Annotation(id = sel.annId!!, fileId = 0, cfiRange = "", colorHex = "")
-                                                        )
-                                                        showHighlightColorsForSelection = false
-                                                        textSelectionData = null
-                                                    }
-                                            )
-                                        }
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Box(modifier = Modifier.width(1.dp).height(24.dp).background(Color.Gray.copy(alpha = 0.5f)))
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        IconButton(onClick = { showHighlightColorsForSelection = false }) {
-                                            Icon(Icons.Default.Close, contentDescription = "Close Colors")
                                         }
                                     } else {
-                                        TextButton(onClick = { 
-                                            val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                                            val clip = android.content.ClipData.newPlainText("InfeRead Copied Text", sel.text)
-                                            clipboard.setPrimaryClip(clip)
-                                            textSelectionData = null
-                                        }) {
-                                            Text("Copy", color = MaterialTheme.colorScheme.onSurface)
-                                        }
-                                        
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Box(modifier = Modifier.width(1.dp).height(24.dp).background(Color.Gray.copy(alpha = 0.5f)))
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        
-                                        TextButton(onClick = { showHighlightColorsForSelection = true }) {
-                                            Text("Highlight", color = MaterialTheme.colorScheme.onSurface)
-                                        }
+                                        DropdownMenuItem(
+                                            text = { Text("Copy") },
+                                            leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null) },
+                                            onClick = { 
+                                                val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                                val clip = android.content.ClipData.newPlainText("InfeRead Copied Text", sel.text)
+                                                clipboard.setPrimaryClip(clip)
+                                                textSelectionData = null
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Highlight") },
+                                            leadingIcon = { Icon(Icons.Default.FormatColorText, contentDescription = null) },
+                                            onClick = { showHighlightColorsForSelection = true }
+                                        )
                                         
                                         if (file.format == "EPUB") {
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Box(modifier = Modifier.width(1.dp).height(24.dp).background(Color.Gray.copy(alpha = 0.5f)))
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            
-                                            TextButton(onClick = { 
-                                                commentingSelectionData = sel
-                                                showCommentDialogForSelection = true
-                                                textSelectionData = null
-                                            }) {
-                                                Text("Comment", color = MaterialTheme.colorScheme.onSurface)
-                                            }
-                                            
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Box(modifier = Modifier.width(1.dp).height(24.dp).background(Color.Gray.copy(alpha = 0.5f)))
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            
-                                            TextButton(onClick = { 
-                                                val query = android.net.Uri.encode(sel.text)
-                                                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://www.google.com/search?q=$query"))
-                                                context.startActivity(intent)
-                                                textSelectionData = null
-                                            }) {
-                                                val displayText = sel.text.trim().take(15) + if (sel.text.length > 15) "..." else ""
-                                                Text("Search \"$displayText\"", color = MaterialTheme.colorScheme.onSurface)
-                                            }
+                                            DropdownMenuItem(
+                                                text = { Text("Comment") },
+                                                leadingIcon = { Icon(Icons.Default.Comment, contentDescription = null) },
+                                                onClick = { 
+                                                    commentingSelectionData = sel
+                                                    showCommentDialogForSelection = true
+                                                    textSelectionData = null
+                                                }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { 
+                                                    val displayText = sel.text.trim().take(15) + if (sel.text.length > 15) "..." else ""
+                                                    Text("Search \"$displayText\"") 
+                                                },
+                                                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                                                onClick = { 
+                                                    val query = android.net.Uri.encode(sel.text)
+                                                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://www.google.com/search?q=$query"))
+                                                    context.startActivity(intent)
+                                                    textSelectionData = null
+                                                }
+                                            )
                                         }
                                     }
                                 }
