@@ -83,19 +83,24 @@ class InfeReadWidget : GlanceAppWidget() {
                     modifier = GlanceModifier
                         .fillMaxSize()
                         .background(bgColor)
-                        .padding(12.dp)
+                        .cornerRadius(24.dp)
+                        .padding(16.dp)
                 ) {
                     // Header Dropdown Toggle
                     Row(
-                        modifier = GlanceModifier.fillMaxWidth().padding(bottom = 8.dp),
+                        modifier = GlanceModifier
+                            .fillMaxWidth()
+                            .background(GlanceTheme.colors.primaryContainer)
+                            .cornerRadius(16.dp)
+                            .padding(12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = if (mode == "BOOKMARKS") "Bookmarks ▼" else "Reading List ▼",
+                            text = if (mode == "BOOKMARKS") "🔖 Bookmarks ▼" else "📚 Reading List ▼",
                             style = TextStyle(
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = GlanceTheme.colors.primary
+                                color = GlanceTheme.colors.onPrimaryContainer
                             ),
                             modifier = GlanceModifier.clickable(actionRunCallback<ToggleMenuAction>())
                         )
@@ -111,28 +116,36 @@ class InfeReadWidget : GlanceAppWidget() {
                             modifier = GlanceModifier.clickable(actionStartActivity(configIntent)).padding(4.dp)
                         )
                     }
+                    
+                    Spacer(modifier = GlanceModifier.height(12.dp))
 
                     if (showMenu) {
-                        Column(modifier = GlanceModifier.fillMaxWidth().background(GlanceTheme.colors.surfaceVariant).cornerRadius(8.dp).padding(8.dp)) {
+                        Column(
+                            modifier = GlanceModifier
+                                .fillMaxWidth()
+                                .background(GlanceTheme.colors.surfaceVariant)
+                                .cornerRadius(12.dp)
+                                .padding(8.dp)
+                        ) {
                             val modeKey = ActionParameters.Key<String>("mode")
-                            Text("Bookmarks", style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant), modifier = GlanceModifier.fillMaxWidth().padding(4.dp).clickable(actionRunCallback<SelectModeAction>(actionParametersOf(modeKey to "BOOKMARKS"))))
-                            Text("Reading List", style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant), modifier = GlanceModifier.fillMaxWidth().padding(4.dp).clickable(actionRunCallback<SelectModeAction>(actionParametersOf(modeKey to "READING_LIST"))))
+                            Text("Bookmarks", style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 15.sp, fontWeight = FontWeight.Medium), modifier = GlanceModifier.fillMaxWidth().padding(8.dp).clickable(actionRunCallback<SelectModeAction>(actionParametersOf(modeKey to "BOOKMARKS"))))
+                            Text("Reading List", style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 15.sp, fontWeight = FontWeight.Medium), modifier = GlanceModifier.fillMaxWidth().padding(8.dp).clickable(actionRunCallback<SelectModeAction>(actionParametersOf(modeKey to "READING_LIST"))))
                         }
-                        Spacer(modifier = GlanceModifier.height(8.dp))
+                        Spacer(modifier = GlanceModifier.height(12.dp))
                     }
 
                     // Vertical Scrollable File Grid
                     if (displayFiles.isEmpty()) {
                         Box(modifier = GlanceModifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Text("No books found", style = TextStyle(color = GlanceTheme.colors.onSurface))
+                            Text("No books found", style = TextStyle(color = GlanceTheme.colors.onSurface, fontSize = 16.sp, fontWeight = FontWeight.Medium))
                         }
                     } else {
                         LazyVerticalGrid(
-                            gridCells = GridCells.Adaptive(80.dp),
+                            gridCells = GridCells.Adaptive(90.dp),
                             modifier = GlanceModifier.fillMaxSize()
                         ) {
                             items(displayFiles) { file ->
-                                Box(modifier = GlanceModifier.padding(4.dp), contentAlignment = Alignment.Center) {
+                                Box(modifier = GlanceModifier.padding(6.dp), contentAlignment = Alignment.TopCenter) {
                                     FileWidgetCard(file = file)
                                 }
                             }

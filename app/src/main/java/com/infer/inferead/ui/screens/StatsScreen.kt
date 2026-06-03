@@ -44,15 +44,21 @@ fun StatsScreen(
     var selectedTab by remember { mutableStateOf(0) }
     val tabs = listOf("Daily", "Weekly", "Monthly", "Yearly")
 
+    val libraryFiles by viewModel.libraryFiles.collectAsState(initial = emptyList())
+
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Reading Statistics") },
+                title = { Text("Reading Statistics", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back")
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.primary
+                )
             )
         }
     ) { padding ->
@@ -61,12 +67,16 @@ fun StatsScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            TabRow(selectedTabIndex = selectedTab) {
+            TabRow(
+                selectedTabIndex = selectedTab,
+                containerColor = MaterialTheme.colorScheme.surface,
+                contentColor = MaterialTheme.colorScheme.primary
+            ) {
                 tabs.forEachIndexed { index, title ->
                     Tab(
                         selected = selectedTab == index,
                         onClick = { selectedTab = index },
-                        text = { Text(title) }
+                        text = { Text(title, fontWeight = if (selectedTab == index) FontWeight.Bold else FontWeight.Normal) }
                     )
                 }
             }
@@ -94,6 +104,14 @@ fun StatsScreen(
                         sessions = sessions,
                         goalMinutes = goalMinutes
                     )
+                }
+
+                item {
+                    ReadingStylesCard(libraryFiles = libraryFiles)
+                }
+                
+                item {
+                    Spacer(Modifier.height(32.dp))
                 }
             }
         }
@@ -293,7 +311,80 @@ fun CalendarHeatmapCard(sessions: List<com.infer.inferead.data.ReadingSession>, 
             Box(modifier = Modifier.size(12.dp).clip(RoundedCornerShape(2.dp)).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)))
             Text("Read", fontSize = 12.sp)
             Box(modifier = Modifier.size(12.dp).clip(RoundedCornerShape(2.dp)).background(MaterialTheme.colorScheme.surface))
-            Text("No Activity", fontSize = 12.sp)
+        }
+    }
+}
+
+@Composable
+fun ReadingStylesCard(libraryFiles: List<com.infer.inferead.data.LibraryFile>) {
+    val formatCounts = remember(libraryFiles) {
+        val counts = mutableMapOf<String, Int>()
+        libraryFiles.forEach { file ->
+            val format = if (file.format == "CODING") "CODE" else file.format
+            counts[format] = counts.getOrDefault(format, 0) + 1
+        }
+        counts.toList().sortedByDescending { it.second }
+    }
+
+    val totalFiles = maxOf(libraryFiles.size, 1)
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+            .padding(16.dp)
+    ) {
+        Text("Library Distribution", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        if (formatCounts.isEmpty()) {
+            Text("No files in library yet.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            return
+        }
+
+        // Progress Bar Chart
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(24.dp)
+                .clip(RoundedCornerShape(12.dp)),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            val colors = listOf(
+                Color(0xFF4CAF50), Color(0xFF2196F3), Color(0xFFFF9800),
+                Color(0xFFE91E63), Color(0xFF9C27B0), Color(0xFF00BCD4)
+            )
+            
+            formatCounts.forEachIndexed { index, pair ->
+                val weight = (pair.second.toFloat() / totalFiles).coerceAtLeast(0.01f)
+                Box(
+                    modifier = Modifier
+                        .weight(weight)
+                        .fillMaxHeight()
+                        .background(colors[index % colors.size])
+                )
+            }
+        }
+        
+        Spacer(modifier = Modifier.height(24.dp))
+        
+        // Legend
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            formatCounts.forEachIndexed { index, pair ->
+                val colors = listOf(
+                    Color(0xFF4CAF50), Color(0xFF2196F3), Color(0xFFFF9800),
+                    Color(0xFFE91E63), Color(0xFF9C27B0), Color(0xFF00BCD4)
+                )
+                val percentage = ((pair.second.toFloat() / totalFiles) * 100).toInt()
+                
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    Box(modifier = Modifier.size(12.dp).clip(RoundedCornerShape(4.dp)).background(colors[index % colors.size]))
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(pair.first, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                    Text("${pair.second} files ($percentage%)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
         }
     }
 }

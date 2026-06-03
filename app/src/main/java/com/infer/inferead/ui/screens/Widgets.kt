@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Book
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -38,57 +39,83 @@ fun ReadingGoalWidget(viewModel: HomeViewModel, onNavigateToStats: () -> Unit = 
     }
     
     val percentage = if (readingGoalMinutes > 0) ((todayMinutes.toFloat() / readingGoalMinutes.toFloat()) * 100).toInt() else 0
+    val progress = (todayMinutes.toFloat() / readingGoalMinutes.toFloat()).coerceIn(0f, 1f)
+    val isGoalMet = progress >= 1f
+    
+    val containerColor = if (isGoalMet) Color(0xFF4CAF50).copy(alpha = 0.15f) else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
+    val contentColor = if (isGoalMet) Color(0xFF388E3C) else MaterialTheme.colorScheme.primary
 
-    Row(
+    Card(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 8.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f))
-            .clickable { onNavigateToStats() }
-            .padding(16.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+            .clickable { onNavigateToStats() },
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = containerColor),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                Icons.Default.Book,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(28.dp)
-            )
-            Spacer(modifier = Modifier.width(16.dp))
-            Column {
-                Text(
-                    text = "Daily Reading Goal",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = if (isGoalMet) Icons.Default.CheckCircle else Icons.Default.Book,
+                        contentDescription = null,
+                        tint = contentColor,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = if (isGoalMet) "Goal Reached!" else "Daily Reading Goal",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = contentColor.copy(alpha = 0.8f),
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text(
+                        text = "${todayMinutes}m",
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = " / ${readingGoalMinutes}m",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 3.dp, start = 4.dp)
+                    )
+                }
+            }
+            
+            Box(contentAlignment = Alignment.Center, modifier = Modifier.size(56.dp)) {
+                CircularProgressIndicator(
+                    progress = 1f,
+                    modifier = Modifier.fillMaxSize(),
+                    color = contentColor.copy(alpha = 0.15f),
+                    strokeWidth = 6.dp,
+                    strokeCap = androidx.compose.ui.graphics.StrokeCap.Round
+                )
+                CircularProgressIndicator(
+                    progress = progress,
+                    modifier = Modifier.fillMaxSize(),
+                    color = contentColor,
+                    strokeWidth = 6.dp,
+                    strokeCap = androidx.compose.ui.graphics.StrokeCap.Round
                 )
                 Text(
-                    text = "${todayMinutes}m / ${readingGoalMinutes}m ($percentage%)",
-                    style = MaterialTheme.typography.titleMedium,
+                    text = "$percentage%",
+                    style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
+                    color = contentColor
                 )
             }
-        }
-        
-        val progress = (todayMinutes.toFloat() / readingGoalMinutes.toFloat()).coerceIn(0f, 1f)
-        Box(contentAlignment = Alignment.Center, modifier = Modifier.size(48.dp)) {
-            CircularProgressIndicator(
-                progress = 1f,
-                modifier = Modifier.fillMaxSize(),
-                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
-                strokeWidth = 4.dp,
-                trackColor = Color.Transparent,
-            )
-            CircularProgressIndicator(
-                progress = progress,
-                modifier = Modifier.fillMaxSize(),
-                color = MaterialTheme.colorScheme.primary,
-                strokeWidth = 4.dp,
-                trackColor = Color.Transparent,
-            )
         }
     }
 }
