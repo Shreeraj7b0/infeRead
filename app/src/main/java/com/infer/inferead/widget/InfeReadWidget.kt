@@ -128,8 +128,8 @@ class InfeReadWidget : GlanceAppWidget() {
                                 .padding(8.dp)
                         ) {
                             val modeKey = ActionParameters.Key<String>("mode")
-                            Text("Bookmarks", style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 15.sp, fontWeight = FontWeight.Medium), modifier = GlanceModifier.fillMaxWidth().padding(8.dp).clickable(actionRunCallback<SelectModeAction>(actionParametersOf(modeKey to "BOOKMARKS"))))
-                            Text("Reading List", style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 15.sp, fontWeight = FontWeight.Medium), modifier = GlanceModifier.fillMaxWidth().padding(8.dp).clickable(actionRunCallback<SelectModeAction>(actionParametersOf(modeKey to "READING_LIST"))))
+                            Text("Bookmarks", style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 15.sp, fontWeight = FontWeight.Normal), modifier = GlanceModifier.fillMaxWidth().padding(8.dp).clickable(actionRunCallback<SelectModeAction>(actionParametersOf(modeKey to "BOOKMARKS"))))
+                            Text("Reading List", style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 15.sp, fontWeight = FontWeight.Normal), modifier = GlanceModifier.fillMaxWidth().padding(8.dp).clickable(actionRunCallback<SelectModeAction>(actionParametersOf(modeKey to "READING_LIST"))))
                         }
                         Spacer(modifier = GlanceModifier.height(12.dp))
                     }
@@ -137,7 +137,7 @@ class InfeReadWidget : GlanceAppWidget() {
                     // Vertical Scrollable File Grid
                     if (displayFiles.isEmpty()) {
                         Box(modifier = GlanceModifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Text("No books found", style = TextStyle(color = GlanceTheme.colors.onSurface, fontSize = 16.sp, fontWeight = FontWeight.Medium))
+                            Text("No books found", style = TextStyle(color = GlanceTheme.colors.onSurface, fontSize = 16.sp, fontWeight = FontWeight.Normal))
                         }
                     } else {
                         LazyVerticalGrid(

@@ -1053,11 +1053,13 @@ fun ReaderScreen(
                         val isTopHalf = sel.top < screenHeightPx / 2
                         val menuY = if (isTopHalf) (sel.bottom / density).dp + 10.dp else (sel.top / density).dp - 60.dp
                         
-                        Box(modifier = Modifier.fillMaxSize()) {
+                        androidx.compose.ui.window.Popup(
+                            alignment = Alignment.TopCenter,
+                            offset = androidx.compose.ui.unit.IntOffset(0, (menuY.value * density).toInt()),
+                            properties = androidx.compose.ui.window.PopupProperties(focusable = false)
+                        ) {
                             Surface(
                                 modifier = Modifier
-                                    .align(Alignment.TopCenter)
-                                    .padding(top = menuY)
                                     .shadow(8.dp, RoundedCornerShape(8.dp)),
                                 shape = RoundedCornerShape(8.dp),
                                 color = MaterialTheme.colorScheme.surface
@@ -1070,7 +1072,7 @@ fun ReaderScreen(
                                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            val colors = listOf("#FFFF00", "#00FF00", "#00FFFF", "#FF00FF", "#c25d5d")
+                                            val colors = listOf("#c25d5d", "#56b056", "#d9cb36", "#a25dc2", "#78a1e3")
                                             colors.forEach { color ->
                                                 Box(
                                                     modifier = Modifier
@@ -1188,7 +1190,7 @@ fun ReaderScreen(
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        val colors = listOf("#FFFF00", "#00FF00", "#00FFFF", "#FF00FF", "#c25d5d")
+                                        val colors = listOf("#c25d5d", "#56b056", "#d9cb36", "#a25dc2", "#78a1e3")
                                         colors.forEach { color ->
                                             Box(
                                                 modifier = Modifier

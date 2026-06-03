@@ -237,6 +237,12 @@ fun BookShelfTab(
         }
 
             item {
+                Spacer(modifier = Modifier.height(16.dp))
+                Divider(
+                    modifier = Modifier.padding(horizontal = 24.dp),
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
+                )
+                Spacer(modifier = Modifier.height(8.dp))
                 ReadingGoalWidget(viewModel = viewModel, onNavigateToStats = onNavigateToStats)
             }
         }
