@@ -35,8 +35,8 @@ interface InfeReadDao {
     @Query("UPDATE library_files SET title = :newTitle WHERE id = :fileId")
     suspend fun renameFile(fileId: Int, newTitle: String): Int
 
-    @Query("UPDATE library_files SET isFinished = :isFinished WHERE id = :fileId")
-    suspend fun markFinished(fileId: Int, isFinished: Boolean): Int
+    @Query("UPDATE library_files SET isFinished = :isFinished, finishedAt = :finishedAt WHERE id = :fileId")
+    suspend fun markFinished(fileId: Int, isFinished: Boolean, finishedAt: Long): Int
 
     @Query("UPDATE library_files SET rating = :rating WHERE id = :fileId")
     suspend fun updateRating(fileId: Int, rating: Int): Int

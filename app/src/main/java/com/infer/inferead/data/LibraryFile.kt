@@ -19,5 +19,6 @@ data class LibraryFile(
     val totalPages: Int = 0,
     val currentPage: Int = 0,
     val isBookmarked: Boolean = false,
-    val isToRead: Boolean = false
+    val isToRead: Boolean = false,
+    val finishedAt: Long = 0
 )

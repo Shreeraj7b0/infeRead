@@ -1126,6 +1126,19 @@ fun ReaderScreen(
                                             }) {
                                                 Text("Comment", color = MaterialTheme.colorScheme.onSurface)
                                             }
+                                            
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Box(modifier = Modifier.width(1.dp).height(24.dp).background(Color.Gray.copy(alpha = 0.5f)))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            
+                                            TextButton(onClick = { 
+                                                val query = android.net.Uri.encode(sel.text)
+                                                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://www.google.com/search?q=$query"))
+                                                context.startActivity(intent)
+                                                textSelectionData = null
+                                            }) {
+                                                Text("Search", color = MaterialTheme.colorScheme.onSurface)
+                                            }
                                         }
                                     }
                                 }
@@ -1891,52 +1904,85 @@ fun ReaderScreen(
                     
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.Top
-                    ) {
-                        val fonts = listOf(
-                            "SansSerif" to FontFamily.SansSerif,
-                            "Google Sans" to FontFamily(androidx.compose.ui.text.font.Font("fonts/google_sans.ttf", context.assets)),
-                            "Literata" to FontFamily(androidx.compose.ui.text.font.Font("fonts/literata.ttf", context.assets)),
-                            "Serif" to FontFamily.Serif,
-                            "Monospace" to FontFamily.Monospace
-                        )
-                        fonts.forEach { (name, font) ->
-                            val isSelected = settings.fontFamily == name
-                            Column(
-                                modifier = Modifier.weight(1f).padding(horizontal = 4.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Surface(
-                                    onClick = { viewModel.setFontFamily(name) },
-                                    modifier = Modifier.fillMaxWidth().aspectRatio(1f),
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = if (isSelected) (if (settings.contrastMode == ContrastMode.Dark) Color(0xFF5C5E8F) else MaterialTheme.colorScheme.primary) else Color.Transparent,
-                                    border = BorderStroke(1.dp, if (isSelected) (if (settings.contrastMode == ContrastMode.Dark) Color(0xFF5C5E8F) else MaterialTheme.colorScheme.primary) else textColor.copy(alpha = 0.3f))
+                    val scriptType = remember(file.title) {
+                        val text = file.title
+                        val devanagariRegex = Regex("[\\u0900-\\u097F]")
+                        val latinRegex = Regex("[a-zA-Z]")
+                        val hasDevanagari = devanagariRegex.containsMatchIn(text)
+                        val hasLatin = latinRegex.containsMatchIn(text)
+                        when {
+                            hasDevanagari && hasLatin -> "MIXED"
+                            hasDevanagari -> "DEVANAGARI"
+                            else -> "LATIN"
+                        }
+                    }
+
+                    val latinFonts = listOf(
+                        "SansSerif" to FontFamily.SansSerif,
+                        "Google Sans" to FontFamily(androidx.compose.ui.text.font.Font("fonts/google_sans.ttf", context.assets)),
+                        "Literata" to FontFamily(androidx.compose.ui.text.font.Font("fonts/literata.ttf", context.assets)),
+                        "Serif" to FontFamily.Serif,
+                        "Monospace" to FontFamily.Monospace
+                    )
+                    
+                    val devanagariFonts = listOf(
+                        "Amita" to FontFamily(androidx.compose.ui.text.font.Font("fonts/amita.ttf", context.assets)),
+                        "Hind" to FontFamily(androidx.compose.ui.text.font.Font("fonts/hind.ttf", context.assets)),
+                        "Yatra One" to FontFamily(androidx.compose.ui.text.font.Font("fonts/yatra_one.ttf", context.assets))
+                    )
+
+                    @Composable
+                    fun FontRow(fonts: List<Pair<String, FontFamily>>) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.Start,
+                            verticalAlignment = Alignment.Top
+                        ) {
+                            fonts.forEach { (name, font) ->
+                                val isSelected = settings.fontFamily == name
+                                Column(
+                                    modifier = Modifier.weight(1f, fill = false).width(64.dp).padding(horizontal = 4.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
                                 ) {
-                                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                                        Text(
-                                            text = "Aa", 
-                                            fontFamily = font, 
-                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal, 
-                                            color = if (isSelected) Color.White else textColor, 
-                                            fontSize = 24.sp
-                                        )
+                                    Surface(
+                                        onClick = { viewModel.setFontFamily(name) },
+                                        modifier = Modifier.fillMaxWidth().aspectRatio(1f),
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = if (isSelected) (if (settings.contrastMode == ContrastMode.Dark) Color(0xFF5C5E8F) else MaterialTheme.colorScheme.primary) else Color.Transparent,
+                                        border = BorderStroke(1.dp, if (isSelected) (if (settings.contrastMode == ContrastMode.Dark) Color(0xFF5C5E8F) else MaterialTheme.colorScheme.primary) else textColor.copy(alpha = 0.3f))
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                            Text(
+                                                text = "Aa", 
+                                                fontFamily = font, 
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal, 
+                                                color = if (isSelected) Color.White else textColor, 
+                                                fontSize = 24.sp
+                                            )
+                                        }
                                     }
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Text(
+                                        text = name.replace(" ", ""), 
+                                        fontFamily = FontFamily.Default, 
+                                        color = if (isSelected) textColor else textColor.copy(alpha = 0.7f), 
+                                        fontSize = 11.sp, 
+                                        maxLines = 1,
+                                        textAlign = TextAlign.Center
+                                    )
                                 }
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Text(
-                                    text = name.replace(" ", ""), 
-                                    fontFamily = FontFamily.Default, 
-                                    color = if (isSelected) textColor else textColor.copy(alpha = 0.7f), 
-                                    fontSize = 11.sp, 
-                                    maxLines = 1,
-                                    textAlign = TextAlign.Center
-                                )
                             }
                         }
+                    }
+
+                    if (scriptType == "DEVANAGARI") {
+                        FontRow(devanagariFonts)
+                    } else if (scriptType == "MIXED") {
+                        FontRow(latinFonts)
+                        Spacer(modifier = Modifier.height(12.dp))
+                        FontRow(devanagariFonts)
+                    } else {
+                        FontRow(latinFonts)
                     }
 
                 } else if (formatGroup == "TXT_DOC_DOCX" || formatGroup == "CODING") {
@@ -2030,52 +2076,85 @@ fun ReaderScreen(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.Top
-                    ) {
-                        val fonts = listOf(
-                            "SansSerif" to FontFamily.SansSerif,
-                            "Google Sans" to FontFamily(androidx.compose.ui.text.font.Font("fonts/google_sans.ttf", context.assets)),
-                            "Literata" to FontFamily(androidx.compose.ui.text.font.Font("fonts/literata.ttf", context.assets)),
-                            "Serif" to FontFamily.Serif,
-                            "Monospace" to FontFamily.Monospace
-                        )
-                        fonts.forEach { (name, font) ->
-                            val isSelected = settings.fontFamily == name
-                            Column(
-                                modifier = Modifier.weight(1f).padding(horizontal = 4.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Surface(
-                                    onClick = { viewModel.setFontFamily(name) },
-                                    modifier = Modifier.fillMaxWidth().aspectRatio(1f),
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = if (isSelected) (if (settings.contrastMode == ContrastMode.Dark) Color(0xFF5C5E8F) else MaterialTheme.colorScheme.primary) else Color.Transparent,
-                                    border = BorderStroke(1.dp, if (isSelected) (if (settings.contrastMode == ContrastMode.Dark) Color(0xFF5C5E8F) else MaterialTheme.colorScheme.primary) else textColor.copy(alpha = 0.3f))
+                    val scriptType = remember(file.title) {
+                        val text = file.title
+                        val devanagariRegex = Regex("[\\u0900-\\u097F]")
+                        val latinRegex = Regex("[a-zA-Z]")
+                        val hasDevanagari = devanagariRegex.containsMatchIn(text)
+                        val hasLatin = latinRegex.containsMatchIn(text)
+                        when {
+                            hasDevanagari && hasLatin -> "MIXED"
+                            hasDevanagari -> "DEVANAGARI"
+                            else -> "LATIN"
+                        }
+                    }
+
+                    val latinFonts = listOf(
+                        "SansSerif" to FontFamily.SansSerif,
+                        "Google Sans" to FontFamily(androidx.compose.ui.text.font.Font("fonts/google_sans.ttf", context.assets)),
+                        "Literata" to FontFamily(androidx.compose.ui.text.font.Font("fonts/literata.ttf", context.assets)),
+                        "Serif" to FontFamily.Serif,
+                        "Monospace" to FontFamily.Monospace
+                    )
+                    
+                    val devanagariFonts = listOf(
+                        "Amita" to FontFamily(androidx.compose.ui.text.font.Font("fonts/amita.ttf", context.assets)),
+                        "Hind" to FontFamily(androidx.compose.ui.text.font.Font("fonts/hind.ttf", context.assets)),
+                        "Yatra One" to FontFamily(androidx.compose.ui.text.font.Font("fonts/yatra_one.ttf", context.assets))
+                    )
+
+                    @Composable
+                    fun FontRowTxt(fonts: List<Pair<String, FontFamily>>) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.Start,
+                            verticalAlignment = Alignment.Top
+                        ) {
+                            fonts.forEach { (name, font) ->
+                                val isSelected = settings.fontFamily == name
+                                Column(
+                                    modifier = Modifier.weight(1f, fill = false).width(64.dp).padding(horizontal = 4.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
                                 ) {
-                                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                                        Text(
-                                            text = "Aa", 
-                                            fontFamily = font, 
-                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal, 
-                                            color = if (isSelected) Color.White else textColor, 
-                                            fontSize = 24.sp
-                                        )
+                                    Surface(
+                                        onClick = { viewModel.setFontFamily(name) },
+                                        modifier = Modifier.fillMaxWidth().aspectRatio(1f),
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = if (isSelected) (if (settings.contrastMode == ContrastMode.Dark) Color(0xFF5C5E8F) else MaterialTheme.colorScheme.primary) else Color.Transparent,
+                                        border = BorderStroke(1.dp, if (isSelected) (if (settings.contrastMode == ContrastMode.Dark) Color(0xFF5C5E8F) else MaterialTheme.colorScheme.primary) else textColor.copy(alpha = 0.3f))
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                            Text(
+                                                text = "Aa", 
+                                                fontFamily = font, 
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal, 
+                                                color = if (isSelected) Color.White else textColor, 
+                                                fontSize = 24.sp
+                                            )
+                                        }
                                     }
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Text(
+                                        text = name.replace(" ", ""), 
+                                        fontFamily = FontFamily.Default, 
+                                        color = if (isSelected) textColor else textColor.copy(alpha = 0.7f), 
+                                        fontSize = 11.sp, 
+                                        maxLines = 1,
+                                        textAlign = TextAlign.Center
+                                    )
                                 }
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Text(
-                                    text = name.replace(" ", ""), 
-                                    fontFamily = FontFamily.Default, 
-                                    color = if (isSelected) textColor else textColor.copy(alpha = 0.7f), 
-                                    fontSize = 11.sp, 
-                                    maxLines = 1,
-                                    textAlign = TextAlign.Center
-                                )
                             }
                         }
+                    }
+
+                    if (scriptType == "DEVANAGARI") {
+                        FontRowTxt(devanagariFonts)
+                    } else if (scriptType == "MIXED") {
+                        FontRowTxt(latinFonts)
+                        Spacer(modifier = Modifier.height(12.dp))
+                        FontRowTxt(devanagariFonts)
+                    } else {
+                        FontRowTxt(latinFonts)
                     }
                     
                 } else if (formatGroup == "PDF" || formatGroup == "CBZ_CBR_CB7") {

@@ -51,19 +51,23 @@ fun BookShelfTab(
     isAssignmentMode: Boolean,
     onToggleAssignmentMode: () -> Unit
 ) {
-    // 0: Alpha Asc, 1: Alpha Desc, 2: Count Asc, 3: Count Desc, else: manual
-    val sortedBookshelves = remember(bookshelves, bookshelfItems, bookshelfSortMode) {
-        when (bookshelfSortMode) {
-            0 -> bookshelves.sortedBy { it.name.lowercase() }
-            1 -> bookshelves.sortedByDescending { it.name.lowercase() }
-            2 -> bookshelves.sortedBy { shelf -> bookshelfItems.count { it.bookshelfId == shelf.id } }
-            3 -> bookshelves.sortedByDescending { shelf -> bookshelfItems.count { it.bookshelfId == shelf.id } }
-            else -> bookshelves.sortedBy { it.sortOrder }
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    var activeBookshelfOrder by remember { mutableStateOf(emptyList<Bookshelf>()) }
+    var draggedShelfIndex by remember { mutableStateOf<Int?>(null) }
+    
+    LaunchedEffect(bookshelves, bookshelfItems, bookshelfSortMode) {
+        if (draggedShelfIndex == null) {
+            activeBookshelfOrder = when (bookshelfSortMode) {
+                0 -> bookshelves.sortedBy { it.name.lowercase() }
+                1 -> bookshelves.sortedByDescending { it.name.lowercase() }
+                2 -> bookshelves.sortedBy { shelf -> bookshelfItems.count { it.bookshelfId == shelf.id } }
+                3 -> bookshelves.sortedByDescending { shelf -> bookshelfItems.count { it.bookshelfId == shelf.id } }
+                else -> bookshelves.sortedBy { it.sortOrder }
+            }
         }
     }
 
     // Drag state for SHELF reordering
-    var draggedShelfId by remember { mutableStateOf<Int?>(null) }
     var shelfDragOffsetY by remember { mutableFloatStateOf(0f) }
 
     // Drag state for FILE assignment
@@ -115,8 +119,9 @@ fun BookShelfTab(
                 }
             }
 
-            items(sortedBookshelves, key = { it.id }) { shelf ->
-                val isDraggingThis = draggedShelfId == shelf.id
+            items(activeBookshelfOrder, key = { it.id }) { shelf ->
+                val index = activeBookshelfOrder.indexOf(shelf)
+                val isDraggingThis = draggedShelfIndex == index
                 val itemsInShelf = bookshelfItems.filter { it.bookshelfId == shelf.id }.sortedBy { it.sortOrder }
                 val filesInShelf = itemsInShelf.mapNotNull { item -> libraryFiles.find { it.id == item.fileId } }
 
@@ -142,34 +147,47 @@ fun BookShelfTab(
                         viewMode = bookshelfViewMode,
                         isAssignmentMode = isAssignmentMode,
                         onShelfDragStart = {
-                            draggedShelfId = shelf.id
-                            shelfDragOffsetY = 0f
+                            val currIdx = activeBookshelfOrder.indexOfFirst { it.id == shelf.id }
+                            if (currIdx != -1) {
+                                draggedShelfIndex = currIdx
+                                shelfDragOffsetY = 0f
+                            }
                         },
                         onShelfDrag = { change, amount ->
                             change.consume()
                             shelfDragOffsetY += amount.y
                             if (bookshelfSortMode != -1) onSortModeChange(-1)
-                            val currentIndex = sortedBookshelves.indexOfFirst { it.id == draggedShelfId }
-                            if (currentIndex < 0) return@BookshelfRow
-                            val newIndex = when {
-                                shelfDragOffsetY > 150f && currentIndex < sortedBookshelves.size - 1 -> {
-                                    shelfDragOffsetY = 0f; currentIndex + 1
+                            
+                            val currentIndex = draggedShelfIndex
+                            if (currentIndex != null) {
+                                val thresholdPx = with(density) { 40.dp.toPx() }
+                                
+                                if (shelfDragOffsetY > thresholdPx && currentIndex < activeBookshelfOrder.size - 1) {
+                                    val newList = activeBookshelfOrder.toMutableList()
+                                    val temp = newList[currentIndex]
+                                    newList[currentIndex] = newList[currentIndex + 1]
+                                    newList[currentIndex + 1] = temp
+                                    activeBookshelfOrder = newList
+                                    draggedShelfIndex = currentIndex + 1
+                                    shelfDragOffsetY = 0f
+                                } else if (shelfDragOffsetY < -thresholdPx && currentIndex > 0) {
+                                    val newList = activeBookshelfOrder.toMutableList()
+                                    val temp = newList[currentIndex]
+                                    newList[currentIndex] = newList[currentIndex - 1]
+                                    newList[currentIndex - 1] = temp
+                                    activeBookshelfOrder = newList
+                                    draggedShelfIndex = currentIndex - 1
+                                    shelfDragOffsetY = 0f
                                 }
-                                shelfDragOffsetY < -150f && currentIndex > 0 -> {
-                                    shelfDragOffsetY = 0f; currentIndex - 1
-                                }
-                                else -> currentIndex
-                            }
-                            if (currentIndex != newIndex) {
-                                val mutable = sortedBookshelves.toMutableList()
-                                val removed = mutable.removeAt(currentIndex)
-                                mutable.add(newIndex, removed)
-                                viewModel.updateBookshelvesOrder(
-                                    mutable.mapIndexed { idx, s -> s.copy(sortOrder = idx) }
-                                )
                             }
                         },
-                        onShelfDragEnd = { draggedShelfId = null; shelfDragOffsetY = 0f },
+                        onShelfDragEnd = { 
+                            draggedShelfIndex = null
+                            shelfDragOffsetY = 0f
+                            viewModel.updateBookshelvesOrder(
+                                activeBookshelfOrder.mapIndexed { idx, s -> s.copy(sortOrder = idx) }
+                            )
+                        },
                         onFileDragStart = { fileId, globalPos ->
                             draggedFileId = fileId
                             draggedFromShelfId = shelf.id

@@ -115,7 +115,8 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
     fun markFinished(fileId: Int, isFinished: Boolean) {
         viewModelScope.launch {
-            repository.markFinished(fileId, isFinished)
+            val finishedAt = if (isFinished) System.currentTimeMillis() else 0L
+            repository.markFinished(fileId, isFinished, finishedAt)
         }
     }
 

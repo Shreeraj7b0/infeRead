@@ -868,20 +868,26 @@ fun HomeScreen(
                         colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = Color.Transparent)
                     )
                     TabRow(
-                        selectedTabIndex = activeTab,
+                        selectedTabIndex = if (activeChecklistId != null) -1 else activeTab,
                         containerColor = Color.Transparent,
                         contentColor = MaterialTheme.colorScheme.primary,
                         divider = { Divider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)) }
                     ) {
                         Tab(
-                            selected = activeTab == 0,
-                            onClick = { scope.launch { pagerState.animateScrollToPage(0) } },
-                            text = { Text("Library", fontWeight = if (activeTab == 0) FontWeight.Bold else FontWeight.Normal) }
+                            selected = activeChecklistId == null && activeTab == 0,
+                            onClick = { 
+                                activeChecklistId = null
+                                scope.launch { pagerState.animateScrollToPage(0) } 
+                            },
+                            text = { Text("Library", fontWeight = if (activeChecklistId == null && activeTab == 0) FontWeight.Bold else FontWeight.Normal) }
                         )
                         Tab(
-                            selected = activeTab == 1,
-                            onClick = { scope.launch { pagerState.animateScrollToPage(1) } },
-                            text = { Text("BookShelf", fontWeight = if (activeTab == 1) FontWeight.Bold else FontWeight.Normal) }
+                            selected = activeChecklistId == null && activeTab == 1,
+                            onClick = { 
+                                activeChecklistId = null
+                                scope.launch { pagerState.animateScrollToPage(1) } 
+                            },
+                            text = { Text("BookShelf", fontWeight = if (activeChecklistId == null && activeTab == 1) FontWeight.Bold else FontWeight.Normal) }
                         )
                     }
                 }
@@ -1054,7 +1060,8 @@ fun HomeScreen(
                                                       OutlinedTextField(
                                                           value = editText, 
                                                           onValueChange = { editText = it }, 
-                                                          singleLine = true,
+                                                          minLines = 3,
+                                                          maxLines = 8,
                                                           modifier = Modifier.fillMaxWidth()
                                                       )
                                                   },
@@ -1119,7 +1126,11 @@ fun HomeScreen(
                                                                           if (!isDragging) {
                                                                               change.consume()
                                                                               if (dragAmount > 20) {
-                                                                                  viewModel.updateChecklistItem(item.copy(indentLevel = minOf(3, item.indentLevel + 1)))
+                                                                                  if (item.isCompleted) {
+                                                                                      viewModel.toggleChecklistItemCompletion(item)
+                                                                                  } else {
+                                                                                      viewModel.updateChecklistItem(item.copy(indentLevel = minOf(3, item.indentLevel + 1)))
+                                                                                  }
                                                                               } else if (dragAmount < -20) {
                                                                                   viewModel.updateChecklistItem(item.copy(indentLevel = maxOf(0, item.indentLevel - 1)))
                                                                               }
@@ -1196,11 +1207,12 @@ fun HomeScreen(
                     androidx.compose.foundation.pager.HorizontalPager(
                         state = pagerState,
                         modifier = Modifier.fillMaxSize(),
+                        beyondBoundsPageCount = 1,
                         flingBehavior = androidx.compose.foundation.pager.PagerDefaults.flingBehavior(
                             state = pagerState,
-                            snapAnimationSpec = androidx.compose.animation.core.spring(
-                                dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy,
-                                stiffness = androidx.compose.animation.core.Spring.StiffnessHigh
+                            snapAnimationSpec = androidx.compose.animation.core.tween(
+                                durationMillis = 250,
+                                easing = androidx.compose.animation.core.FastOutSlowInEasing
                             )
                         )
                     ) { page ->
@@ -1968,14 +1980,16 @@ fun HomeScreen(
                         contextMenuFile = null; contextMenuFileShelfId = null
                     }
                 )
-                ListItem(
-                    headlineContent = { Text(if (contextMenuFile!!.isFinished) "Mark as Unfinished" else "Mark as Finished") },
-                    leadingContent = { Icon(Icons.Default.CheckCircle, contentDescription = null) },
-                    modifier = Modifier.clickable {
-                        viewModel.markFinished(contextMenuFile!!.id, !contextMenuFile!!.isFinished)
-                        contextMenuFile = null; contextMenuFileShelfId = null
-                    }
-                )
+                if (contextMenuFile!!.format in listOf("PDF", "EPUB", "CBZ", "CBR", "CB7", "CODING")) {
+                    ListItem(
+                        headlineContent = { Text(if (contextMenuFile!!.isFinished) "Mark as Unfinished" else "Mark as Finished") },
+                        leadingContent = { Icon(Icons.Default.CheckCircle, contentDescription = null) },
+                        modifier = Modifier.clickable {
+                            viewModel.markFinished(contextMenuFile!!.id, !contextMenuFile!!.isFinished)
+                            contextMenuFile = null; contextMenuFileShelfId = null
+                        }
+                    )
+                }
                 ListItem(
                     headlineContent = { Text("Personal Rating") },
                     leadingContent = { Icon(Icons.Default.Star, contentDescription = null) },

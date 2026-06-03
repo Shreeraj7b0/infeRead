@@ -239,8 +239,8 @@ class FileRepository(private val context: Context, private val dao: InfeReadDao)
         dao.updateFilePath(fileId, newUri.toString())
     }
 
-    suspend fun markFinished(fileId: Int, isFinished: Boolean) = withContext(Dispatchers.IO) {
-        dao.markFinished(fileId, isFinished)
+    suspend fun markFinished(fileId: Int, isFinished: Boolean, finishedAt: Long) = withContext(Dispatchers.IO) {
+        dao.markFinished(fileId, isFinished, finishedAt)
     }
 
     suspend fun updateRating(fileId: Int, rating: Int) = withContext(Dispatchers.IO) {

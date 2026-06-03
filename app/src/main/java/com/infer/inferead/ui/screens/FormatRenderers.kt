@@ -659,6 +659,9 @@ fun TXTReader(
             "Monospace" -> androidx.compose.ui.text.font.FontFamily.Monospace
             "Google Sans" -> androidx.compose.ui.text.font.FontFamily(androidx.compose.ui.text.font.Font("fonts/google_sans.ttf", context.assets))
             "Literata" -> androidx.compose.ui.text.font.FontFamily(androidx.compose.ui.text.font.Font("fonts/literata.ttf", context.assets))
+            "Amita" -> androidx.compose.ui.text.font.FontFamily(androidx.compose.ui.text.font.Font("fonts/amita.ttf", context.assets))
+            "Hind" -> androidx.compose.ui.text.font.FontFamily(androidx.compose.ui.text.font.Font("fonts/hind.ttf", context.assets))
+            "Yatra One" -> androidx.compose.ui.text.font.FontFamily(androidx.compose.ui.text.font.Font("fonts/yatra_one.ttf", context.assets))
             else -> androidx.compose.ui.text.font.FontFamily.SansSerif
         }
 
@@ -676,6 +679,9 @@ fun TXTReader(
                     <style>
                         @font-face { font-family: 'Google Sans'; src: url('file:///android_asset/fonts/google_sans.ttf'); }
                         @font-face { font-family: 'Literata'; src: url('file:///android_asset/fonts/literata.ttf'); }
+                        @font-face { font-family: 'Amita'; src: url('file:///android_asset/fonts/amita.ttf'); }
+                        @font-face { font-family: 'Hind'; src: url('file:///android_asset/fonts/hind.ttf'); }
+                        @font-face { font-family: 'Yatra One'; src: url('file:///android_asset/fonts/yatra_one.ttf'); }
                         body {
                             margin: 0;
                             padding: 16px;
@@ -696,6 +702,9 @@ fun TXTReader(
                                     "SansSerif" -> "sans-serif"
                                     "Google Sans" -> "\"Google Sans\", sans-serif"
                                     "Literata" -> "\"Literata\", serif"
+                                    "Amita" -> "\"Amita\", sans-serif"
+                                    "Hind" -> "\"Hind\", sans-serif"
+                                    "Yatra One" -> "\"Yatra One\", sans-serif"
                                     else -> "\"Google Sans\", sans-serif"
                                 }
                             };
@@ -821,6 +830,9 @@ fun TXTReader(
                             "SansSerif" -> "sans-serif"
                             "Google Sans" -> "\"Google Sans\", sans-serif"
                             "Literata" -> "\"Literata\", serif"
+                            "Amita" -> "\"Amita\", sans-serif"
+                            "Hind" -> "\"Hind\", sans-serif"
+                            "Yatra One" -> "\"Yatra One\", sans-serif"
                             else -> "\"Google Sans\", sans-serif"
                         }
                         val js = """
@@ -1515,6 +1527,9 @@ fun EPUBReader(
                     "Monospace" -> "monospace"
                     "Google Sans" -> "'Google Sans'"
                     "Literata" -> "'Literata'"
+                    "Amita" -> "'Amita'"
+                    "Hind" -> "'Hind'"
+                    "Yatra One" -> "'Yatra One'"
                     else -> "sans-serif"
                 }
                 val fontSize = (16 * settings.fontSizeMultiplier).toInt()
@@ -1532,6 +1547,18 @@ fun EPUBReader(
                         @font-face {
                             font-family: 'Literata';
                             src: url('file:///android_asset/fonts/literata.ttf');
+                        }
+                        @font-face {
+                            font-family: 'Amita';
+                            src: url('file:///android_asset/fonts/amita.ttf');
+                        }
+                        @font-face {
+                            font-family: 'Hind';
+                            src: url('file:///android_asset/fonts/hind.ttf');
+                        }
+                        @font-face {
+                            font-family: 'Yatra One';
+                            src: url('file:///android_asset/fonts/yatra_one.ttf');
                         }
                     """
                     val layoutCss = if (isFixedLayout) """

@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -58,6 +59,7 @@ fun SettingsScreen(
     
     var readingGoalMinutes by remember { mutableStateOf(prefs.getInt("reading_goal_minutes", 15)) }
     var showCustomGoalDialog by remember { mutableStateOf(false) }
+    var showFinishedBooksDialog by remember { mutableStateOf(false) }
 
 
     val appThemeBg by ThemeManager.currentBackground.collectAsState()
@@ -252,6 +254,22 @@ fun SettingsScreen(
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
                                     text = "Stats",
+                                    style = MaterialTheme.typography.labelLarge
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            TextButton(
+                                onClick = { showFinishedBooksDialog = true },
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.CheckCircle,
+                                    contentDescription = "Finished Books",
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Finished Books",
                                     style = MaterialTheme.typography.labelLarge
                                 )
                             }
@@ -725,5 +743,146 @@ fun SettingsScreen(
                 TextButton(onClick = { showCustomGoalDialog = false }) { Text("Cancel") }
             }
         )
+    }
+    
+    if (showFinishedBooksDialog) {
+        var isGridView by remember { mutableStateOf(false) }
+        val finishedFiles = libraryFiles.filter { it.isFinished }
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { showFinishedBooksDialog = false },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                color = MaterialTheme.colorScheme.background
+            ) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    TopAppBar(
+                        title = { Text("Finished Books") },
+                        navigationIcon = {
+                            IconButton(onClick = { showFinishedBooksDialog = false }) {
+                                Icon(Icons.Default.Close, contentDescription = "Close")
+                            }
+                        },
+                        actions = {
+                            IconButton(onClick = { isGridView = !isGridView }) {
+                                Icon(
+                                    if (isGridView) Icons.Default.ViewList else Icons.Default.GridView,
+                                    contentDescription = "Toggle View"
+                                )
+                            }
+                        }
+                    )
+                    
+                    if (finishedFiles.isEmpty()) {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text("No finished books yet.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    } else {
+                        val dateFormat = java.text.SimpleDateFormat("dd.MM.yy", java.util.Locale.getDefault())
+                        
+                        if (isGridView) {
+                            androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
+                                columns = androidx.compose.foundation.lazy.grid.GridCells.Adaptive(100.dp),
+                                contentPadding = PaddingValues(16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(16.dp),
+                                modifier = Modifier.fillMaxSize()
+                            ) {
+                                items(finishedFiles.size) { index ->
+                                    val file = finishedFiles[index]
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        modifier = Modifier.clickable { onOpenFile(file.id) }
+                                    ) {
+                                        val shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+                                        Box(
+                                            modifier = Modifier
+                                                .aspectRatio(0.7f)
+                                                .clip(shape)
+                                                .background(MaterialTheme.colorScheme.surfaceVariant)
+                                        ) {
+                                            if (file.thumbnailUri != null) {
+                                                coil.compose.AsyncImage(
+                                                    model = file.thumbnailUri,
+                                                    contentDescription = null,
+                                                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                                    modifier = Modifier.fillMaxSize()
+                                                )
+                                            }
+                                        }
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Text(
+                                            file.title,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis,
+                                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                        )
+                                        if (file.finishedAt > 0) {
+                                            Text(
+                                                dateFormat.format(java.util.Date(file.finishedAt)),
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            LazyColumn(
+                                contentPadding = PaddingValues(16.dp),
+                                modifier = Modifier.fillMaxSize()
+                            ) {
+                                items(finishedFiles) { file ->
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(bottom = 16.dp)
+                                            .clickable { onOpenFile(file.id) },
+                                        verticalAlignment = Alignment.Top
+                                    ) {
+                                        val shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+                                        Box(
+                                            modifier = Modifier
+                                                .width(80.dp)
+                                                .aspectRatio(0.7f)
+                                                .clip(shape)
+                                                .background(MaterialTheme.colorScheme.surfaceVariant)
+                                        ) {
+                                            if (file.thumbnailUri != null) {
+                                                coil.compose.AsyncImage(
+                                                    model = file.thumbnailUri,
+                                                    contentDescription = null,
+                                                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                                    modifier = Modifier.fillMaxSize()
+                                                )
+                                            }
+                                        }
+                                        Spacer(modifier = Modifier.width(16.dp))
+                                        Column {
+                                            Text(
+                                                file.title,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                maxLines = 2,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            if (file.finishedAt > 0) {
+                                                Text(
+                                                    dateFormat.format(java.util.Date(file.finishedAt)),
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
