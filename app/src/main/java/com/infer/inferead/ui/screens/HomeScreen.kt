@@ -116,7 +116,9 @@ fun HomeScreen(
         )
     }
     
-    var activeTab by remember { mutableIntStateOf(homePrefs.getInt("active_tab", 0)) }
+    val pagerState = androidx.compose.foundation.pager.rememberPagerState(initialPage = homePrefs.getInt("active_tab", 0), pageCount = { 2 })
+    val activeTab = pagerState.currentPage
+    LaunchedEffect(activeTab) { homePrefs.edit().putInt("active_tab", activeTab).apply() }
     val bookshelves by viewModel.bookshelves.collectAsState()
     val bookshelfItems by viewModel.bookshelfItems.collectAsState()
     var isBookshelfAssignmentMode by remember { mutableStateOf(false) }
@@ -124,6 +126,7 @@ fun HomeScreen(
     var bookshelfViewMode by remember { mutableIntStateOf(homePrefs.getInt("bookshelf_view_mode", 0)) } // 0: Shelf Stack, 1: Vertical Stack
 
     var contextMenuFile by remember { mutableStateOf<LibraryFile?>(null) }
+    var contextMenuFileShelfId by remember { mutableStateOf<Int?>(null) } // non-null when from a bookshelf
     var downloadDialogFile by remember { mutableStateOf<LibraryFile?>(null) }
     var formatSelectionDialogFile by remember { mutableStateOf<LibraryFile?>(null) }
     var formatSelectionDialogIsShare by remember { mutableStateOf(false) }
@@ -803,7 +806,7 @@ fun HomeScreen(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(50))
                                     .background(if (activeTab == 0) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
-                                    .clickable { activeTab = 0; homePrefs.edit().putInt("active_tab", 0).apply() }
+                                    .clickable { scope.launch { pagerState.animateScrollToPage(0) } }
                                     .padding(horizontal = 12.dp, vertical = 6.dp)
                             ) {
                                 Text("Library", style = MaterialTheme.typography.labelMedium.copy(fontWeight = if (activeTab == 0) FontWeight.Bold else FontWeight.Normal, color = if (activeTab == 0) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface))
@@ -812,7 +815,7 @@ fun HomeScreen(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(50))
                                     .background(if (activeTab == 1) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
-                                    .clickable { activeTab = 1; homePrefs.edit().putInt("active_tab", 1).apply() }
+                                    .clickable { scope.launch { pagerState.animateScrollToPage(1) } }
                                     .padding(horizontal = 12.dp, vertical = 6.dp)
                             ) {
                                 Text("BookShelf", style = MaterialTheme.typography.labelMedium.copy(fontWeight = if (activeTab == 1) FontWeight.Bold else FontWeight.Normal, color = if (activeTab == 1) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface))
@@ -872,12 +875,12 @@ fun HomeScreen(
                     ) {
                         Tab(
                             selected = activeTab == 0,
-                            onClick = { activeTab = 0; homePrefs.edit().putInt("active_tab", 0).apply() },
+                            onClick = { scope.launch { pagerState.animateScrollToPage(0) } },
                             text = { Text("Library", fontWeight = if (activeTab == 0) FontWeight.Bold else FontWeight.Normal) }
                         )
                         Tab(
                             selected = activeTab == 1,
-                            onClick = { activeTab = 1; homePrefs.edit().putInt("active_tab", 1).apply() },
+                            onClick = { scope.launch { pagerState.animateScrollToPage(1) } },
                             text = { Text("BookShelf", fontWeight = if (activeTab == 1) FontWeight.Bold else FontWeight.Normal) }
                         )
                     }
@@ -1069,7 +1072,7 @@ fun HomeScreen(
 
                                           ReorderableItem(reorderState, key = item.id) { isDragging ->
                                               val elevation = if (isDragging) 8.dp else 0.dp
-                                              Box(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+                                              Box(modifier = Modifier.fillMaxWidth().padding(start = (item.indentLevel * 24).dp, bottom = 8.dp)) {
                                                   Column(
                                                       modifier = Modifier
                                                           .fillMaxWidth()
@@ -1124,7 +1127,6 @@ fun HomeScreen(
                                                                       }
                                                                   )
                                                               }
-                                                              .padding(start = (item.indentLevel * 16).dp)
                                                               .padding(horizontal = 8.dp, vertical = 6.dp),
                                                           verticalAlignment = Alignment.CenterVertically
                                                       ) {
@@ -1190,8 +1192,20 @@ fun HomeScreen(
                             }
                         }
                     }
-                } else if (activeTab == 0) {
-                    LazyColumn(
+                } else {
+                    androidx.compose.foundation.pager.HorizontalPager(
+                        state = pagerState,
+                        modifier = Modifier.fillMaxSize(),
+                        flingBehavior = androidx.compose.foundation.pager.PagerDefaults.flingBehavior(
+                            state = pagerState,
+                            snapAnimationSpec = androidx.compose.animation.core.spring(
+                                dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy,
+                                stiffness = androidx.compose.animation.core.Spring.StiffnessHigh
+                            )
+                        )
+                    ) { page ->
+                        if (page == 0) {
+                            LazyColumn(
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(vertical = 16.dp)
                     ) {
@@ -1678,7 +1692,7 @@ fun HomeScreen(
                             Spacer(modifier = Modifier.height(100.dp))
                         }
                     }
-                } else if (activeTab == 1) {
+                } else if (page == 1) {
                     BookShelfTab(
                         viewModel = viewModel,
                         bookshelves = bookshelves,
@@ -1688,7 +1702,10 @@ fun HomeScreen(
                             onNavigateToReader(it)
                             scope.launch { drawerState.close() }
                         },
-                        onContextMenu = { contextMenuFile = it },
+                        onContextMenu = { file, shelfId ->
+                            contextMenuFile = file
+                            contextMenuFileShelfId = shelfId
+                        },
                         bookshelfSortMode = bookshelfSortMode,
                         bookshelfViewMode = bookshelfViewMode,
                         onSortModeChange = { 
@@ -1702,6 +1719,8 @@ fun HomeScreen(
                         isAssignmentMode = isBookshelfAssignmentMode,
                         onToggleAssignmentMode = { isBookshelfAssignmentMode = !isBookshelfAssignmentMode }
                     )
+                        }
+                    }
                 }
 
                 if (activeChecklistId == null) {
@@ -1904,7 +1923,7 @@ fun HomeScreen(
 
     if (contextMenuFile != null) {
         ModalBottomSheet(
-            onDismissRequest = { contextMenuFile = null },
+            onDismissRequest = { contextMenuFile = null; contextMenuFileShelfId = null },
             sheetState = sheetState,
             containerColor = MaterialTheme.colorScheme.surface
         ) {
@@ -1914,47 +1933,64 @@ fun HomeScreen(
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                     modifier = Modifier.padding(bottom = 16.dp)
                 )
-                
+                // "Remove from Bookshelf" — only visible when opened from a bookshelf
+                if (contextMenuFileShelfId != null) {
+                    ListItem(
+                        headlineContent = { Text("Remove from Bookshelf", color = MaterialTheme.colorScheme.error) },
+                        leadingContent = {
+                            Icon(
+                                Icons.Default.Remove,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                        },
+                        modifier = Modifier.clickable {
+                            viewModel.removeFileFromBookshelf(contextMenuFileShelfId!!, contextMenuFile!!.id)
+                            contextMenuFile = null
+                            contextMenuFileShelfId = null
+                        }
+                    )
+                }
                 ListItem(
                     headlineContent = { Text("Rename File") },
                     leadingContent = { Icon(Icons.Default.Edit, contentDescription = null) },
-                    modifier = Modifier.clickable { 
+                    modifier = Modifier.clickable {
                         // TODO Show rename dialog
-                        contextMenuFile = null
+                        contextMenuFile = null; contextMenuFileShelfId = null
                     }
                 )
                 ListItem(
                     headlineContent = { Text("Relink File") },
                     leadingContent = { Icon(Icons.Default.Link, contentDescription = null) },
-                    modifier = Modifier.clickable { 
+                    modifier = Modifier.clickable {
                         relinkingFileId = contextMenuFile!!.id
                         relinkFilePickerLauncher.launch(arrayOf("*/*"))
-                        contextMenuFile = null
+                        contextMenuFile = null; contextMenuFileShelfId = null
                     }
                 )
                 ListItem(
                     headlineContent = { Text(if (contextMenuFile!!.isFinished) "Mark as Unfinished" else "Mark as Finished") },
                     leadingContent = { Icon(Icons.Default.CheckCircle, contentDescription = null) },
-                    modifier = Modifier.clickable { 
+                    modifier = Modifier.clickable {
                         viewModel.markFinished(contextMenuFile!!.id, !contextMenuFile!!.isFinished)
-                        contextMenuFile = null
+                        contextMenuFile = null; contextMenuFileShelfId = null
                     }
                 )
                 ListItem(
                     headlineContent = { Text("Personal Rating") },
                     leadingContent = { Icon(Icons.Default.Star, contentDescription = null) },
-                    modifier = Modifier.clickable { 
+                    modifier = Modifier.clickable {
                         ratingDialogFile = contextMenuFile
-                        contextMenuFile = null
+                        contextMenuFile = null; contextMenuFileShelfId = null
                     }
                 )
                 ListItem(
                     headlineContent = { Text("Set Custom Cover") },
                     leadingContent = { Icon(Icons.Default.Add, contentDescription = null) },
-                    modifier = Modifier.clickable { 
+                    modifier = Modifier.clickable {
                         editingThumbnailFileId = contextMenuFile!!.id
                         thumbnailPickerLauncher.launch(arrayOf("image/*"))
-                        contextMenuFile = null
+                        contextMenuFile = null; contextMenuFileShelfId = null
                     }
                 )
                 ListItem(
@@ -1962,7 +1998,7 @@ fun HomeScreen(
                     leadingContent = { Icon(Icons.Default.BookmarkAdd, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
                     modifier = Modifier.clickable {
                         viewModel.markToRead(contextMenuFile!!.id, !contextMenuFile!!.isToRead)
-                        contextMenuFile = null
+                        contextMenuFile = null; contextMenuFileShelfId = null
                     }
                 )
                 if (contextMenuFile!!.isBookmarked) {
@@ -1973,54 +2009,54 @@ fun HomeScreen(
                             val fileId = contextMenuFile!!.id
                             viewModel.clearBookmarks(fileId)
                             readerPrefs.edit().remove("bookmarked_pages_$fileId").apply()
-                            contextMenuFile = null
+                            contextMenuFile = null; contextMenuFileShelfId = null
                         }
                     )
                 }
                 if (contextMenuFile!!.format == "PDF") {
                     ListItem(
                         headlineContent = { Text("Convert to EPUB", color = MaterialTheme.colorScheme.tertiary) },
-                        leadingContent = { 
-                            Icon(Icons.Default.MenuBook, contentDescription = null, tint = MaterialTheme.colorScheme.tertiary) 
+                        leadingContent = {
+                            Icon(Icons.Default.MenuBook, contentDescription = null, tint = MaterialTheme.colorScheme.tertiary)
                         },
-                        modifier = Modifier.clickable { 
+                        modifier = Modifier.clickable {
                             viewModel.convertPdfToEpub(contextMenuFile!!)
-                            contextMenuFile = null
+                            contextMenuFile = null; contextMenuFileShelfId = null
                         }
                     )
                 }
                 ListItem(
                     headlineContent = { Text("Share File", color = MaterialTheme.colorScheme.primary) },
                     leadingContent = { Icon(Icons.Default.Share, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
-                    modifier = Modifier.clickable { 
+                    modifier = Modifier.clickable {
                         if (contextMenuFile!!.format == "CODING") {
                             formatSelectionDialogFile = contextMenuFile
                             formatSelectionDialogIsShare = true
                         } else {
-                            viewModel.exportFile(context, contextMenuFile!!, modified = false) // Add normal share if needed later, or ignore
+                            viewModel.exportFile(context, contextMenuFile!!, modified = false)
                         }
-                        contextMenuFile = null
+                        contextMenuFile = null; contextMenuFileShelfId = null
                     }
                 )
                 ListItem(
                     headlineContent = { Text("Download File", color = MaterialTheme.colorScheme.primary) },
                     leadingContent = { Icon(Icons.Default.Download, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
-                    modifier = Modifier.clickable { 
+                    modifier = Modifier.clickable {
                         if (contextMenuFile!!.format == "CODING") {
                             formatSelectionDialogFile = contextMenuFile
                             formatSelectionDialogIsShare = false
                         } else {
                             downloadDialogFile = contextMenuFile
                         }
-                        contextMenuFile = null
+                        contextMenuFile = null; contextMenuFileShelfId = null
                     }
                 )
                 ListItem(
                     headlineContent = { Text("Delete File", color = MaterialTheme.colorScheme.error) },
                     leadingContent = { Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
-                    modifier = Modifier.clickable { 
+                    modifier = Modifier.clickable {
                         viewModel.deleteFile(contextMenuFile!!.id)
-                        contextMenuFile = null
+                        contextMenuFile = null; contextMenuFileShelfId = null
                     }
                 )
             }

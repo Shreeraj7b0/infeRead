@@ -2,8 +2,8 @@ package com.infer.inferead.ui.screens
 
 import androidx.compose.animation.*
 import androidx.compose.foundation.*
-import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -17,8 +17,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -39,7 +43,7 @@ fun BookShelfTab(
     bookshelfItems: List<BookshelfItem>,
     libraryFiles: List<LibraryFile>,
     onNavigateToReader: (Int) -> Unit,
-    onContextMenu: (LibraryFile) -> Unit,
+    onContextMenu: (LibraryFile, Int?) -> Unit, // Int? = bookshelf ID if in a shelf
     bookshelfSortMode: Int,
     bookshelfViewMode: Int,
     onSortModeChange: (Int) -> Unit,
@@ -47,7 +51,7 @@ fun BookShelfTab(
     isAssignmentMode: Boolean,
     onToggleAssignmentMode: () -> Unit
 ) {
-    // 0: Alpha Asc, 1: Alpha Desc, 2: Count Asc, 3: Count Desc
+    // 0: Alpha Asc, 1: Alpha Desc, 2: Count Asc, 3: Count Desc, else: manual
     val sortedBookshelves = remember(bookshelves, bookshelfItems, bookshelfSortMode) {
         when (bookshelfSortMode) {
             0 -> bookshelves.sortedBy { it.name.lowercase() }
@@ -58,109 +62,162 @@ fun BookShelfTab(
         }
     }
 
+    // Drag state for SHELF reordering
     var draggedShelfId by remember { mutableStateOf<Int?>(null) }
-    var dragOffsetY by remember { mutableFloatStateOf(0f) }
+    var shelfDragOffsetY by remember { mutableFloatStateOf(0f) }
+
+    // Drag state for FILE assignment
     var draggedFileId by remember { mutableStateOf<Int?>(null) }
-    var draggedFromShelfId by remember { mutableStateOf<Int?>(null) } // -1 means from assignment row
-    var dragOffsetX by remember { mutableFloatStateOf(0f) }
-    var fileDragOffsetY by remember { mutableFloatStateOf(0f) }
+    var draggedFromShelfId by remember { mutableStateOf<Int?>(null) } // null = home, -1 = assignment row
+    var fileDragX by remember { mutableFloatStateOf(0f) }
+    var fileDragY by remember { mutableFloatStateOf(0f) }
+
+    // Shelf bounding boxes for hit-testing file drop targets
+    val shelfBounds = remember { mutableStateMapOf<Int, Rect>() }
 
     var showCreateDialog by remember { mutableStateOf(false) }
     var fileToAssignOnCreate by remember { mutableStateOf<Int?>(null) }
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            // Content
-            LazyColumn(
-                modifier = Modifier.weight(1f),
-                contentPadding = PaddingValues(bottom = if (isAssignmentMode) 120.dp else 80.dp)
-            ) {
-                if (bookshelves.isEmpty()) {
-                    item {
-                        Box(modifier = Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
-                            Text("No bookshelves yet. Tap + to create one.", color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f))
-                        }
-                    }
-                }
+    // Add-file-to-shelf dialog
+    var showAddFileDialog by remember { mutableStateOf(false) }
+    var addFileTargetShelfId by remember { mutableStateOf<Int?>(null) }
 
-                items(sortedBookshelves, key = { it.id }) { shelf ->
-                    val isDraggingThis = draggedShelfId == shelf.id
-                    val itemsInShelf = bookshelfItems.filter { it.bookshelfId == shelf.id }.sortedBy { it.sortOrder }
-                    val filesInShelf = itemsInShelf.mapNotNull { item -> libraryFiles.find { it.id == item.fileId } }
+    var rootPosition by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
 
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .onGloballyPositioned { rootPosition = it.positionInWindow() }
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onDoubleTap = { if (!isAssignmentMode) showCreateDialog = true }
+                )
+            }
+    ) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(bottom = if (isAssignmentMode) 200.dp else 80.dp)
+        ) {
+            if (bookshelves.isEmpty()) {
+                item {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .animateItemPlacement()
-                            .graphicsLayer {
-                                if (isDraggingThis) translationY = dragOffsetY
-                                shadowElevation = if (isDraggingThis) 8.dp.toPx() else 0f
-                            }
-                            .zIndex(if (isDraggingThis) 10f else 1f)
+                            .height(200.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        BookshelfRow(
-                            shelf = shelf,
-                            files = filesInShelf,
-                            onNavigateToReader = onNavigateToReader,
-                            onContextMenu = onContextMenu,
-                            viewModel = viewModel,
-                            viewMode = bookshelfViewMode,
-                            isAssignmentMode = isAssignmentMode,
-                            onShelfDragStart = { draggedShelfId = shelf.id; dragOffsetY = 0f },
-                            onShelfDrag = { change, amount -> 
-                                change.consume()
-                                dragOffsetY += amount.y 
-                                if (bookshelfSortMode != -1) onSortModeChange(-1) // Switch to manual sort automatically
-                                if (bookshelfSortMode == -1 || bookshelfSortMode == -2 || true) { // Allow reorder anytime
-                                    val currentIndex = sortedBookshelves.indexOf(shelf)
-                                    val newIndex = if (dragOffsetY > 150f && currentIndex < sortedBookshelves.size - 1) {
-                                        dragOffsetY = 0f; currentIndex + 1
-                                    } else if (dragOffsetY < -150f && currentIndex > 0) {
-                                        dragOffsetY = 0f; currentIndex - 1
-                                    } else currentIndex
-
-                                    if (currentIndex != newIndex) {
-                                        val mutableShelves = sortedBookshelves.toMutableList()
-                                        val removed = mutableShelves.removeAt(currentIndex)
-                                        mutableShelves.add(newIndex, removed)
-                                        val updatedShelves = mutableShelves.mapIndexed { index, s -> s.copy(sortOrder = index) }
-                                        viewModel.updateBookshelvesOrder(updatedShelves)
-                                    }
-                                }
-                            },
-                            onShelfDragEnd = { draggedShelfId = null; dragOffsetY = 0f },
-                            onFileDragStart = { fileId, _ -> draggedFileId = fileId; draggedFromShelfId = shelf.id; dragOffsetX = 0f; fileDragOffsetY = 0f },
-                            onFileDrag = { change, amount ->
-                                change.consume()
-                                dragOffsetX += amount.x
-                                fileDragOffsetY += amount.y
-                            },
-                            onFileDragEnd = {
-                                if (draggedFileId != null) {
-                                    if (fileDragOffsetY > 200f || fileDragOffsetY < -200f) {
-                                        val dropIndex = sortedBookshelves.indexOf(shelf) + (if (fileDragOffsetY > 0) 1 else -1)
-                                        if (dropIndex in sortedBookshelves.indices) {
-                                            viewModel.removeFileFromBookshelf(shelf.id, draggedFileId!!)
-                                            viewModel.addFileToBookshelf(sortedBookshelves[dropIndex].id, draggedFileId!!)
-                                        } else {
-                                            viewModel.removeFileFromBookshelf(shelf.id, draggedFileId!!) // Move to unassigned
-                                        }
-                                    }
-                                }
-                                draggedFileId = null; draggedFromShelfId = null; dragOffsetX = 0f; fileDragOffsetY = 0f
-                            }
+                        Text(
+                            "Bookshelves empty.\nCreate one using + icon",
+                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
                         )
                     }
                 }
+            }
 
-                item {
-                    ReadingGoalWidget(viewModel = viewModel, onNavigateToStats = {})
+            items(sortedBookshelves, key = { it.id }) { shelf ->
+                val isDraggingThis = draggedShelfId == shelf.id
+                val itemsInShelf = bookshelfItems.filter { it.bookshelfId == shelf.id }.sortedBy { it.sortOrder }
+                val filesInShelf = itemsInShelf.mapNotNull { item -> libraryFiles.find { it.id == item.fileId } }
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .animateItemPlacement()
+                        .graphicsLayer {
+                            if (isDraggingThis) translationY = shelfDragOffsetY
+                            shadowElevation = if (isDraggingThis) 8.dp.toPx() else 0f
+                        }
+                        .zIndex(if (isDraggingThis) 10f else 1f)
+                        .onGloballyPositioned { coords ->
+                            shelfBounds[shelf.id] = coords.boundsInWindow()
+                        }
+                ) {
+                    BookshelfRow(
+                        shelf = shelf,
+                        files = filesInShelf,
+                        onNavigateToReader = onNavigateToReader,
+                        onContextMenu = { file -> onContextMenu(file, shelf.id) },
+                        viewModel = viewModel,
+                        viewMode = bookshelfViewMode,
+                        isAssignmentMode = isAssignmentMode,
+                        onShelfDragStart = {
+                            draggedShelfId = shelf.id
+                            shelfDragOffsetY = 0f
+                        },
+                        onShelfDrag = { change, amount ->
+                            change.consume()
+                            shelfDragOffsetY += amount.y
+                            if (bookshelfSortMode != -1) onSortModeChange(-1)
+                            val currentIndex = sortedBookshelves.indexOfFirst { it.id == draggedShelfId }
+                            if (currentIndex < 0) return@BookshelfRow
+                            val newIndex = when {
+                                shelfDragOffsetY > 150f && currentIndex < sortedBookshelves.size - 1 -> {
+                                    shelfDragOffsetY = 0f; currentIndex + 1
+                                }
+                                shelfDragOffsetY < -150f && currentIndex > 0 -> {
+                                    shelfDragOffsetY = 0f; currentIndex - 1
+                                }
+                                else -> currentIndex
+                            }
+                            if (currentIndex != newIndex) {
+                                val mutable = sortedBookshelves.toMutableList()
+                                val removed = mutable.removeAt(currentIndex)
+                                mutable.add(newIndex, removed)
+                                viewModel.updateBookshelvesOrder(
+                                    mutable.mapIndexed { idx, s -> s.copy(sortOrder = idx) }
+                                )
+                            }
+                        },
+                        onShelfDragEnd = { draggedShelfId = null; shelfDragOffsetY = 0f },
+                        onFileDragStart = { fileId, globalPos ->
+                            draggedFileId = fileId
+                            draggedFromShelfId = shelf.id
+                            fileDragX = globalPos.x
+                            fileDragY = globalPos.y
+                        },
+                        onFileDrag = { change, amount ->
+                            change.consume()
+                            fileDragX += amount.x
+                            fileDragY += amount.y
+                        },
+                        onFileDragEnd = {
+                            val fid = draggedFileId
+                            val fromShelf = draggedFromShelfId
+                            if (fid != null && fromShelf != null && fromShelf != -1) {
+                                // Hit-test against all shelf bounds
+                                val targetShelf = shelfBounds.entries.firstOrNull { (sid, rect) ->
+                                    sid != fromShelf && rect.contains(
+                                        androidx.compose.ui.geometry.Offset(fileDragX, fileDragY)
+                                    )
+                                }?.key
+                                if (targetShelf != null) {
+                                    viewModel.removeFileFromBookshelf(fromShelf, fid)
+                                    viewModel.addFileToBookshelf(targetShelf, fid)
+                                }
+                            }
+                            draggedFileId = null
+                            draggedFromShelfId = null
+                            fileDragX = 0f
+                            fileDragY = 0f
+                        },
+                        onAddFilesToShelf = {
+                            addFileTargetShelfId = shelf.id
+                            showAddFileDialog = true
+                        },
+                        onRemoveFileFromShelf = { fileId ->
+                            viewModel.removeFileFromBookshelf(shelf.id, fileId)
+                        }
+                    )
                 }
+            }
+
+            item {
+                ReadingGoalWidget(viewModel = viewModel, onNavigateToStats = {})
             }
         }
 
-
-        // Assignment Bottom Row
+        // ── Assignment Bottom Row ──────────────────────────────────────────────
         AnimatedVisibility(
             visible = isAssignmentMode,
             enter = slideInVertically(initialOffsetY = { it }),
@@ -175,8 +232,17 @@ fun BookShelfTab(
                     .background(MaterialTheme.colorScheme.surfaceVariant)
                     .padding(8.dp)
             ) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text("Drag to assign", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Drag to assign",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(start = 8.dp)
+                    )
                     IconButton(onClick = onToggleAssignmentMode) {
                         Icon(Icons.Default.Close, contentDescription = "Close")
                     }
@@ -184,38 +250,61 @@ fun BookShelfTab(
                 LazyRow(
                     contentPadding = PaddingValues(horizontal = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier.fillMaxWidth().height(150.dp)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(130.dp)
                 ) {
                     items(libraryFiles, key = { it.id }) { file ->
                         val isDraggingThis = draggedFileId == file.id && draggedFromShelfId == -1
+                        var globalPosition by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
                         Box(
                             modifier = Modifier
-                                .width(80.dp)
+                                .width(70.dp)
                                 .fillMaxHeight()
+                                .onGloballyPositioned { coordinates ->
+                                    globalPosition = coordinates.positionInWindow()
+                                }
                                 .zIndex(if (isDraggingThis) 10f else 1f)
                                 .pointerInput(file.id) {
                                     detectDragGesturesAfterLongPress(
-                                        onDragStart = { offset -> draggedFileId = file.id; draggedFromShelfId = -1; dragOffsetX = 0f; fileDragOffsetY = 0f },
-                                        onDrag = { change, dragAmount -> 
+                                        onDragStart = {
+                                            draggedFileId = file.id
+                                            draggedFromShelfId = -1
+                                            fileDragX = globalPosition.x
+                                            fileDragY = globalPosition.y
+                                        },
+                                        onDrag = { change, dragAmount ->
                                             change.consume()
-                                            dragOffsetX += dragAmount.x
-                                            fileDragOffsetY += dragAmount.y
+                                            fileDragX += dragAmount.x
+                                            fileDragY += dragAmount.y
                                         },
                                         onDragEnd = {
-                                            // Determine drop target roughly based on Y offset (if it's negative enough, dropped on a shelf)
-                                            if (fileDragOffsetY < -200f) {
-                                                // Ideally, we calculate exact coordinates, but for simplicity here we assume if they drag UP, it goes to the first visible shelf or prompt create
-                                                if (bookshelves.isEmpty()) {
-                                                    fileToAssignOnCreate = file.id
+                                            val fid = draggedFileId
+                                            if (fid != null) {
+                                                val targetShelf = shelfBounds.entries.firstOrNull { (_, rect) ->
+                                                    rect.contains(
+                                                        androidx.compose.ui.geometry.Offset(fileDragX, fileDragY)
+                                                    )
+                                                }?.key
+                                                if (targetShelf != null) {
+                                                    viewModel.addFileToBookshelf(targetShelf, fid)
+                                                } else if (bookshelves.isEmpty()) {
+                                                    fileToAssignOnCreate = fid
                                                     showCreateDialog = true
-                                                } else {
-                                                    // Drop on first for now or implement exact hit testing
-                                                    viewModel.addFileToBookshelf(bookshelves.first().id, file.id)
                                                 }
+                                                // else dropped in empty space -> no action (already in library)
                                             }
-                                            draggedFileId = null; draggedFromShelfId = null; dragOffsetX = 0f; fileDragOffsetY = 0f
+                                            draggedFileId = null
+                                            draggedFromShelfId = null
+                                            fileDragX = 0f
+                                            fileDragY = 0f
                                         },
-                                        onDragCancel = { draggedFileId = null; draggedFromShelfId = null; dragOffsetX = 0f; fileDragOffsetY = 0f }
+                                        onDragCancel = {
+                                            draggedFileId = null
+                                            draggedFromShelfId = null
+                                            fileDragX = 0f
+                                            fileDragY = 0f
+                                        }
                                     )
                                 }
                         ) {
@@ -223,9 +312,18 @@ fun BookShelfTab(
                                 AsyncImage(
                                     model = file.thumbnailUri,
                                     contentDescription = null,
-                                    modifier = Modifier.size(75.dp, 100.dp).clip(RoundedCornerShape(4.dp)).background(Color.Gray)
+                                    modifier = Modifier
+                                        .size(60.dp, 85.dp)
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(Color.Gray)
                                 )
-                                Text(file.title, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
+                                Text(
+                                    file.title,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.padding(top = 4.dp)
+                                )
                             }
                         }
                     }
@@ -233,38 +331,118 @@ fun BookShelfTab(
             }
         }
 
+        // ── Create Bookshelf Dialog ──────────────────────────────────────────────
         if (showCreateDialog) {
             var name by remember { mutableStateOf("") }
             AlertDialog(
-                onDismissRequest = { showCreateDialog = false },
+                onDismissRequest = { showCreateDialog = false; fileToAssignOnCreate = null },
                 title = { Text("New Bookshelf") },
                 text = {
-                    OutlinedTextField(value = name, onValueChange = { name = it }, placeholder = { Text("Name") })
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it },
+                        placeholder = { Text("Name") }
+                    )
                 },
                 confirmButton = {
-                    TextButton(onClick = { 
+                    TextButton(onClick = {
                         viewModel.createBookshelf(name, "#FF9800", fileToAssignOnCreate)
                         showCreateDialog = false
                         fileToAssignOnCreate = null
                     }) { Text("Create") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showCreateDialog = false; fileToAssignOnCreate = null }) {
+                        Text("Cancel")
+                    }
                 }
             )
         }
 
+        // ── Add Files to Shelf Dialog ────────────────────────────────────────────
+        if (showAddFileDialog && addFileTargetShelfId != null) {
+            val targetId = addFileTargetShelfId!!
+            val alreadyInShelf = bookshelfItems.filter { it.bookshelfId == targetId }.map { it.fileId }.toSet()
+            AlertDialog(
+                onDismissRequest = { showAddFileDialog = false; addFileTargetShelfId = null },
+                title = { Text("Add files to shelf") },
+                text = {
+                    Column {
+                        val eligible = libraryFiles.filter { it.id !in alreadyInShelf }
+                        if (eligible.isEmpty()) {
+                            Text("All files are already in this shelf.", color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+                        } else {
+                            LazyColumn(modifier = Modifier.heightIn(max = 400.dp)) {
+                                items(eligible, key = { it.id }) { file ->
+                                    ListItem(
+                                        headlineContent = { Text(file.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                        leadingContent = {
+                                            AsyncImage(
+                                                model = file.thumbnailUri,
+                                                contentDescription = null,
+                                                modifier = Modifier
+                                                    .size(36.dp, 50.dp)
+                                                    .clip(RoundedCornerShape(4.dp))
+                                                    .background(Color.Gray)
+                                            )
+                                        },
+                                        modifier = Modifier.clickable {
+                                            viewModel.addFileToBookshelf(targetId, file.id)
+                                            showAddFileDialog = false
+                                            addFileTargetShelfId = null
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {},
+                dismissButton = {
+                    TextButton(onClick = { showAddFileDialog = false; addFileTargetShelfId = null }) {
+                        Text("Cancel")
+                    }
+                }
+            )
+        }
+
+        // ── Floating drag preview ────────────────────────────────────────────────
         if (draggedFileId != null) {
             val file = libraryFiles.find { it.id == draggedFileId }
             if (file != null) {
-                androidx.compose.ui.window.Popup(
-                    alignment = Alignment.TopStart,
-                    offset = androidx.compose.ui.unit.IntOffset(dragOffsetX.toInt(), fileDragOffsetY.toInt())
+                Box(
+                    modifier = Modifier
+                        .offset {
+                            androidx.compose.ui.unit.IntOffset(
+                                (fileDragX - rootPosition.x).toInt(),
+                                (fileDragY - rootPosition.y).toInt()
+                            )
+                        }
+                        .size(70.dp, 120.dp)
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.fillMaxSize()
+                    ) {
                         AsyncImage(
                             model = file.thumbnailUri,
                             contentDescription = null,
-                            modifier = Modifier.size(75.dp, 100.dp).clip(RoundedCornerShape(4.dp)).background(Color.Gray)
+                            modifier = Modifier
+                                .size(60.dp, 85.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(Color.Gray)
                         )
-                        Text(file.title, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
+                        Text(
+                            file.title,
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .padding(top = 4.dp)
+                                .width(70.dp),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            lineHeight = 12.sp
+                        )
                     }
                 }
             }
@@ -287,53 +465,100 @@ fun BookshelfRow(
     onShelfDragEnd: () -> Unit,
     onFileDragStart: ((Int, androidx.compose.ui.geometry.Offset) -> Unit)? = null,
     onFileDrag: ((androidx.compose.ui.input.pointer.PointerInputChange, androidx.compose.ui.geometry.Offset) -> Unit)? = null,
-    onFileDragEnd: (() -> Unit)? = null
+    onFileDragEnd: (() -> Unit)? = null,
+    onAddFilesToShelf: () -> Unit = {},
+    onRemoveFileFromShelf: (Int) -> Unit = {}
 ) {
     var showMenu by remember { mutableStateOf(false) }
     var isMinimised by remember { mutableStateOf(shelf.isMinimised) }
-    val parsedColor = try { Color(android.graphics.Color.parseColor(shelf.colorHex)) } catch(e:Exception){ MaterialTheme.colorScheme.surfaceVariant }
+    val parsedColor = try {
+        Color(android.graphics.Color.parseColor(shelf.colorHex))
+    } catch (e: Exception) {
+        MaterialTheme.colorScheme.surfaceVariant
+    }
 
     Column(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp)
     ) {
+        // ── Header Row ─────────────────────────────────────────────────────
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // Drag handle + shelf name
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.weight(1f).pointerInput(shelf.id) {
-                    detectDragGesturesAfterLongPress(
-                        onDragStart = onShelfDragStart,
-                        onDrag = onShelfDrag,
-                        onDragEnd = onShelfDragEnd,
-                        onDragCancel = onShelfDragEnd
+                modifier = Modifier
+                    .weight(1f)
+                    .pointerInput(shelf.id) {
+                        detectDragGesturesAfterLongPress(
+                            onDragStart = onShelfDragStart,
+                            onDrag = onShelfDrag,
+                            onDragEnd = onShelfDragEnd,
+                            onDragCancel = onShelfDragEnd
+                        )
+                    }
+            ) {
+                // 6-dot drag indicator coloured to match shelf
+                Icon(
+                    Icons.Default.DragIndicator,
+                    contentDescription = "Drag",
+                    tint = parsedColor
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    shelf.name,
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            // Action buttons: (+) add, (^) minimise, (⋮) menu
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                // Quick add-file button
+                IconButton(onClick = onAddFilesToShelf, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.Default.Add, contentDescription = "Add files", modifier = Modifier.size(18.dp))
+                }
+                // Minimise toggle
+                IconButton(
+                    onClick = {
+                        isMinimised = !isMinimised
+                        viewModel.updateBookshelfMinimised(shelf.id, isMinimised)
+                    },
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                        if (isMinimised) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowUp,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
                     )
                 }
-            ) {
-                Icon(Icons.Default.DragIndicator, contentDescription = "Drag", tint = MaterialTheme.colorScheme.onBackground.copy(alpha=0.5f))
-                Spacer(Modifier.width(8.dp))
-                Text(shelf.name, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-            }
-            Row {
-                IconButton(onClick = { 
-                    isMinimised = !isMinimised
-                    viewModel.updateBookshelfMinimised(shelf.id, isMinimised)
-                }) {
-                    Icon(if(isMinimised) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowUp, null)
-                }
+                // 3-dot overflow menu
                 Box {
-                    IconButton(onClick = { showMenu = true }) {
-                        Icon(Icons.Default.MoreVert, null)
+                    IconButton(onClick = { showMenu = true }, modifier = Modifier.size(36.dp)) {
+                        Icon(Icons.Default.MoreVert, null, modifier = Modifier.size(18.dp))
                     }
+
                     var showRenameDialog by remember { mutableStateOf(false) }
                     var showColorDialog by remember { mutableStateOf(false) }
 
                     DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-                        DropdownMenuItem(text = { Text("Rename") }, onClick = { showRenameDialog = true; showMenu = false })
-                        DropdownMenuItem(text = { Text("Change Color") }, onClick = { showColorDialog = true; showMenu = false })
-                        DropdownMenuItem(text = { Text("Delete") }, onClick = { viewModel.deleteBookshelf(shelf.id); showMenu = false })
+                        DropdownMenuItem(
+                            text = { Text("Rename") },
+                            onClick = { showRenameDialog = true; showMenu = false }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Change Color") },
+                            onClick = { showColorDialog = true; showMenu = false }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Delete") },
+                            onClick = { viewModel.deleteBookshelf(shelf.id); showMenu = false }
+                        )
                     }
 
                     if (showRenameDialog) {
@@ -341,9 +566,18 @@ fun BookshelfRow(
                         AlertDialog(
                             onDismissRequest = { showRenameDialog = false },
                             title = { Text("Rename Bookshelf") },
-                            text = { OutlinedTextField(value = newName, onValueChange = { newName = it }, singleLine = true) },
+                            text = {
+                                OutlinedTextField(
+                                    value = newName,
+                                    onValueChange = { newName = it },
+                                    singleLine = true
+                                )
+                            },
                             confirmButton = {
-                                TextButton(onClick = { viewModel.renameBookshelf(shelf.id, newName); showRenameDialog = false }) { Text("Save") }
+                                TextButton(onClick = {
+                                    viewModel.renameBookshelf(shelf.id, newName)
+                                    showRenameDialog = false
+                                }) { Text("Save") }
                             },
                             dismissButton = {
                                 TextButton(onClick = { showRenameDialog = false }) { Text("Cancel") }
@@ -356,42 +590,67 @@ fun BookshelfRow(
                         var customG by remember { mutableFloatStateOf(parsedColor.green) }
                         var customB by remember { mutableFloatStateOf(parsedColor.blue) }
 
-                        val colors = listOf("#FF9800", "#4CAF50", "#2196F3", "#9C27B0", "#F44336", "#795548", "#607D8B", "#E91E63")
+                        val presets = listOf(
+                            "#FF9800", "#4CAF50", "#2196F3", "#9C27B0",
+                            "#F44336", "#795548", "#607D8B", "#E91E63"
+                        )
                         AlertDialog(
                             onDismissRequest = { showColorDialog = false },
                             title = { Text("Choose Color") },
                             text = {
                                 Column(modifier = Modifier.fillMaxWidth()) {
                                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        items(colors) { hex ->
-                                            val color = try { Color(android.graphics.Color.parseColor(hex)) } catch(e:Exception){ Color.Gray }
+                                        items(presets) { hex ->
+                                            val c = try {
+                                                Color(android.graphics.Color.parseColor(hex))
+                                            } catch (e: Exception) { Color.Gray }
                                             Box(
                                                 modifier = Modifier
                                                     .size(40.dp)
                                                     .clip(CircleShape)
-                                                    .background(color)
+                                                    .background(c)
                                                     .clickable {
-                                                        customR = color.red
-                                                        customG = color.green
-                                                        customB = color.blue
+                                                        customR = c.red
+                                                        customG = c.green
+                                                        customB = c.blue
                                                     }
                                             )
                                         }
                                     }
-                                    Spacer(modifier = Modifier.height(16.dp))
-                                    val previewColor = Color(customR, customG, customB)
-                                    Box(modifier = Modifier.fillMaxWidth().height(40.dp).clip(RoundedCornerShape(8.dp)).background(previewColor))
+                                    Spacer(Modifier.height(16.dp))
+                                    val preview = Color(customR, customG, customB)
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(40.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(preview)
+                                    )
                                     Spacer(Modifier.height(8.dp))
-                                    Row(verticalAlignment = Alignment.CenterVertically) { Text("R"); Spacer(Modifier.width(8.dp)); Slider(value = customR, onValueChange = { customR = it }) }
-                                    Row(verticalAlignment = Alignment.CenterVertically) { Text("G"); Spacer(Modifier.width(8.dp)); Slider(value = customG, onValueChange = { customG = it }) }
-                                    Row(verticalAlignment = Alignment.CenterVertically) { Text("B"); Spacer(Modifier.width(8.dp)); Slider(value = customB, onValueChange = { customB = it }) }
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("R"); Spacer(Modifier.width(8.dp))
+                                        Slider(value = customR, onValueChange = { customR = it })
+                                    }
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("G"); Spacer(Modifier.width(8.dp))
+                                        Slider(value = customG, onValueChange = { customG = it })
+                                    }
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("B"); Spacer(Modifier.width(8.dp))
+                                        Slider(value = customB, onValueChange = { customB = it })
+                                    }
                                 }
                             },
                             confirmButton = {
-                                TextButton(onClick = { 
-                                    val hexString = String.format("#%02X%02X%02X", (customR * 255).toInt(), (customG * 255).toInt(), (customB * 255).toInt())
-                                    viewModel.updateBookshelfColor(shelf.id, hexString)
-                                    showColorDialog = false 
+                                TextButton(onClick = {
+                                    val hex = String.format(
+                                        "#%02X%02X%02X",
+                                        (customR * 255).toInt(),
+                                        (customG * 255).toInt(),
+                                        (customB * 255).toInt()
+                                    )
+                                    viewModel.updateBookshelfColor(shelf.id, hex)
+                                    showColorDialog = false
                                 }) { Text("Apply") }
                             },
                             dismissButton = {
@@ -403,58 +662,106 @@ fun BookshelfRow(
             }
         }
 
+        // ── Shelf Content ───────────────────────────────────────────────────
         AnimatedVisibility(visible = !isMinimised) {
             Box(
+                contentAlignment = Alignment.Center,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(parsedColor.copy(alpha = 0.2f), RoundedCornerShape(8.dp))
-                    .padding(12.dp)
+                    .heightIn(min = if (files.isEmpty()) 70.dp else 0.dp)
+                    .background(parsedColor.copy(alpha = 0.45f), RoundedCornerShape(8.dp))
+                    .padding(horizontal = 10.dp, vertical = 8.dp)
             ) {
-                if (viewMode == 0) {
-                    // Horizontal stack
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (files.isEmpty()) {
+                    Text(
+                        "Empty – drag files here",
+                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.55f),
+                        style = MaterialTheme.typography.bodySmall,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                } else if (viewMode == 0) {
+                    // ── Horizontal shelf (default) ──
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
                         items(files, key = { it.id }) { file ->
                             BookshelfFileItem(
-                                file = file, 
-                                onClick = onNavigateToReader, 
+                                file = file,
+                                onClick = onNavigateToReader,
                                 onLongClick = onContextMenu,
                                 isAssignmentMode = isAssignmentMode,
                                 onDragStart = if (onFileDragStart != null) { { offset -> onFileDragStart(file.id, offset) } } else null,
                                 onDrag = onFileDrag,
-                                onDragEnd = onFileDragEnd
+                                onDragEnd = onFileDragEnd,
+                                onRemove = if (isAssignmentMode) { { onRemoveFileFromShelf(file.id) } } else null
                             )
                         }
                     }
                 } else {
-                    // Vertical stack
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    // ── "Vertical stack" = shelves side-by-side, files top-to-bottom ──
+                    // This mode shows files as compact horizontal cards
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
                         files.forEach { file ->
+                            var globalPosition by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
                             Row(
-                                modifier = Modifier.fillMaxWidth().then(
-                                    if (isAssignmentMode && onFileDragStart != null && onFileDrag != null && onFileDragEnd != null) {
-                                        Modifier.pointerInput(file.id) {
-                                            detectDragGesturesAfterLongPress(
-                                                onDragStart = { offset -> onFileDragStart!!(file.id, offset) },
-                                                onDrag = { change, amount -> onFileDrag!!(change, amount) },
-                                                onDragEnd = { onFileDragEnd!!() },
-                                                onDragCancel = { onFileDragEnd!!() }
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(52.dp)
+                                    .onGloballyPositioned { coordinates ->
+                                        globalPosition = coordinates.positionInWindow()
+                                    }
+                                    .then(
+                                        if (isAssignmentMode && onFileDragStart != null && onFileDrag != null && onFileDragEnd != null) {
+                                            Modifier.pointerInput(file.id) {
+                                                detectDragGesturesAfterLongPress(
+                                                    onDragStart = { onFileDragStart(file.id, globalPosition) },
+                                                    onDrag = { change, amount -> onFileDrag(change, amount) },
+                                                    onDragEnd = { onFileDragEnd() },
+                                                    onDragCancel = { onFileDragEnd() }
+                                                )
+                                            }
+                                        } else {
+                                            Modifier.combinedClickable(
+                                                onClick = { onNavigateToReader(file.id) },
+                                                onLongClick = { onContextMenu(file) }
                                             )
                                         }
-                                    } else {
-                                        Modifier.combinedClickable(
-                                            onClick = { onNavigateToReader(file.id) },
-                                            onLongClick = { onContextMenu(file) }
-                                        )
-                                    }
-                                )
+                                    ),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
                                 AsyncImage(
                                     model = file.thumbnailUri,
                                     contentDescription = null,
-                                    modifier = Modifier.size(40.dp, 56.dp).clip(RoundedCornerShape(4.dp)).background(Color.Gray)
+                                    modifier = Modifier
+                                        .size(34.dp, 48.dp)
+                                        .clip(RoundedCornerShape(3.dp))
+                                        .background(Color.Gray)
                                 )
-                                Spacer(Modifier.width(12.dp))
-                                Text(file.title, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                                Spacer(Modifier.width(10.dp))
+                                Text(
+                                    file.title,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                if (isAssignmentMode) {
+                                    IconButton(
+                                        onClick = { onRemoveFileFromShelf(file.id) },
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Remove,
+                                            contentDescription = "Remove",
+                                            tint = MaterialTheme.colorScheme.error,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -467,25 +774,28 @@ fun BookshelfRow(
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun BookshelfFileItem(
-    file: LibraryFile, 
-    onClick: (Int)->Unit, 
-    onLongClick: (LibraryFile)->Unit,
+    file: LibraryFile,
+    onClick: (Int) -> Unit,
+    onLongClick: (LibraryFile) -> Unit,
     isAssignmentMode: Boolean = false,
     onDragStart: ((androidx.compose.ui.geometry.Offset) -> Unit)? = null,
     onDrag: ((androidx.compose.ui.input.pointer.PointerInputChange, androidx.compose.ui.geometry.Offset) -> Unit)? = null,
-    onDragEnd: (() -> Unit)? = null
+    onDragEnd: (() -> Unit)? = null,
+    onRemove: (() -> Unit)? = null
 ) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.width(80.dp)
+    var globalPosition by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
+    Box(
+        modifier = Modifier
+            .width(70.dp)
+            .onGloballyPositioned { coordinates -> globalPosition = coordinates.positionInWindow() }
             .then(
                 if (isAssignmentMode && onDragStart != null && onDrag != null && onDragEnd != null) {
                     Modifier.pointerInput(file.id) {
                         detectDragGesturesAfterLongPress(
-                            onDragStart = { offset -> onDragStart!!(offset) },
-                            onDrag = { change, amount -> onDrag!!(change, amount) },
-                            onDragEnd = { onDragEnd!!() },
-                            onDragCancel = { onDragEnd!!() }
+                            onDragStart = { onDragStart(globalPosition) },
+                            onDrag = { change, amount -> onDrag(change, amount) },
+                            onDragEnd = { onDragEnd() },
+                            onDragCancel = { onDragEnd() }
                         )
                     }
                 } else {
@@ -496,12 +806,41 @@ fun BookshelfFileItem(
                 }
             )
     ) {
-        AsyncImage(
-            model = file.thumbnailUri,
-            contentDescription = null,
-            modifier = Modifier.size(80.dp, 110.dp).clip(RoundedCornerShape(4.dp)).background(Color.Gray)
-        )
-        Spacer(Modifier.height(4.dp))
-        Text(file.title, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            AsyncImage(
+                model = file.thumbnailUri,
+                contentDescription = null,
+                modifier = Modifier
+                    .size(60.dp, 85.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(Color.Gray)
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                file.title,
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        // (-) remove badge in assignment mode
+        if (isAssignmentMode && onRemove != null) {
+            Box(
+                modifier = Modifier
+                    .size(18.dp)
+                    .align(Alignment.TopEnd)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.error)
+                    .clickable { onRemove() },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Default.Remove,
+                    contentDescription = "Remove from shelf",
+                    tint = Color.White,
+                    modifier = Modifier.size(12.dp)
+                )
+            }
+        }
     }
 }

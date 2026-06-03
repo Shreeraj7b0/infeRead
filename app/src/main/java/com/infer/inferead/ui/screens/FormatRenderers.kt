@@ -269,7 +269,12 @@ fun PdfViewer(
     fun pageColorFilter(): ColorFilter? {
         return remember(contrastMode, isWarmFilterActive, isNegative) {
             var matrix = when (contrastMode) {
-                ContrastMode.Dark, ContrastMode.HighContrastDark -> ColorMatrix(floatArrayOf(-1f,0f,0f,0f,255f, 0f,-1f,0f,0f,255f, 0f,0f,-1f,0f,255f, 0f,0f,0f,1f,0f))
+                ContrastMode.Dark, ContrastMode.HighContrastDark -> ColorMatrix(floatArrayOf(
+                    0.333f, -0.666f, -0.666f, 0f, 255f,
+                    -0.666f, 0.333f, -0.666f, 0f, 255f,
+                    -0.666f, -0.666f, 0.333f, 0f, 255f,
+                    0f, 0f, 0f, 1f, 0f
+                ))
                 ContrastMode.HighContrastLight -> { val c=1.4f; val t=(-0.5f*c+0.5f)*255f; ColorMatrix(floatArrayOf(c,0f,0f,0f,t, 0f,c,0f,0f,t, 0f,0f,c,0f,t, 0f,0f,0f,1f,0f)) }
                 ContrastMode.EInk -> { val c=2f; val t=(-0.5f*c+0.5f)*255f; ColorMatrix(floatArrayOf(0.213f*c,0.715f*c,0.072f*c,0f,t, 0.213f*c,0.715f*c,0.072f*c,0f,t, 0.213f*c,0.715f*c,0.072f*c,0f,t, 0f,0f,0f,1f,0f)) }
                 else -> null
@@ -478,7 +483,7 @@ fun PdfViewer(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .padding(
-                        top = androidx.compose.foundation.layout.WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 8.dp,
+                        top = androidx.compose.foundation.layout.WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + if (isReaderModeActive) 16.dp else 64.dp,
                         end = 16.dp
                     )
             ) {
@@ -880,7 +885,10 @@ fun TXTReader(
                 visible = textScrollState.isScrollInProgress && textScrollState.value > 0 && !settings.isHorizontalScroll,
                 enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.scaleIn(),
                 exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.scaleOut(),
-                modifier = androidx.compose.ui.Modifier.align(androidx.compose.ui.Alignment.TopEnd).padding(top = 70.dp, end = 16.dp)
+                modifier = androidx.compose.ui.Modifier.align(androidx.compose.ui.Alignment.TopEnd).padding(
+                    top = androidx.compose.foundation.layout.WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + if (settings.isReaderModeActive) 16.dp else 64.dp,
+                    end = 16.dp
+                )
             ) {
                 androidx.compose.material3.FloatingActionButton(
                     onClick = { coroutineScope.launch { textScrollState.scrollTo(0) } },
@@ -2097,7 +2105,10 @@ fun EPUBReader(
                         visible = isScrolled && (webViewRef?.scrollY ?: 0) > 0 && !settings.isHorizontalScroll,
                         enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.scaleIn(),
                         exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.scaleOut(),
-                        modifier = androidx.compose.ui.Modifier.align(androidx.compose.ui.Alignment.TopEnd).padding(top = 70.dp, end = 16.dp)
+                        modifier = androidx.compose.ui.Modifier.align(androidx.compose.ui.Alignment.TopEnd).padding(
+                            top = androidx.compose.foundation.layout.WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + if (settings.isReaderModeActive) 16.dp else 64.dp,
+                            end = 16.dp
+                        )
                     ) {
                         androidx.compose.material3.FloatingActionButton(
                             onClick = { webViewRef?.scrollTo(0, 0) },

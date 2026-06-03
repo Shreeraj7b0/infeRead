@@ -669,8 +669,8 @@ fun ReaderScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .statusBarsPadding()
-                            .padding(horizontal = 4.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.Top
+                            .padding(horizontal = 4.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         IconButton(
                             onClick = onNavigateBack,
@@ -698,7 +698,6 @@ fun ReaderScreen(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             modifier = Modifier
                                 .weight(1f)
-                                .padding(vertical = 8.dp)
                         ) {
                             Text(
                                 text = currentFile?.title ?: "Loading...",
@@ -708,7 +707,7 @@ fun ReaderScreen(
                                 maxLines = if (isTitleExpanded) Int.MAX_VALUE else 1,
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier
-                                    .weight(1f, fill = false)
+                                    .weight(1f)
                                     .clickable(
                                         interactionSource = remember { MutableInteractionSource() },
                                         indication = null
@@ -763,15 +762,16 @@ fun ReaderScreen(
                                     modifier = Modifier.align(Alignment.CenterVertically)
                                 ) {
                                     val isCurrentPageBookmarked = bookmarkedPages.contains(currentFile?.currentPage ?: -1)
-                                    val dotColor = if (isCurrentPageBookmarked) Color(0xFFFFC107)
-                                        else (if (settings.contrastMode == ContrastMode.Dark) Color(0xFF9AB0E6) else MaterialTheme.colorScheme.primary).copy(alpha = 0.5f)
-                                    Canvas(
-                                        modifier = Modifier.size(24.dp)
-                                    ) {
-                                        drawCircle(
-                                            color = dotColor,
-                                            radius = 3.dp.toPx()
-                                        )
+                                    if (isCurrentPageBookmarked) {
+                                        val dotColor = Color(0xFFFFC107)
+                                        Canvas(
+                                            modifier = Modifier.size(24.dp)
+                                        ) {
+                                            drawCircle(
+                                                color = dotColor,
+                                                radius = 3.dp.toPx()
+                                            )
+                                        }
                                     }
                                     Icon(
                                         imageVector = if (isCurrentPageBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
@@ -1324,7 +1324,7 @@ fun ReaderScreen(
                         visible = showVerticalScrubber,
                         modifier = Modifier
                             .align(Alignment.CenterEnd)
-                            .padding(end = 0.dp)
+                            .offset(x = 4.dp)
                     )
                 }
 
