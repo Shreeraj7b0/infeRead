@@ -343,13 +343,16 @@ fun HomeScreen(
         editingThumbnailFileId = null
     }
 
+    val isDrawerClosed = drawerState.currentValue == DrawerValue.Closed && drawerState.targetValue == DrawerValue.Closed
+
     ModalNavigationDrawer(
         drawerState = drawerState,
         gesturesEnabled = drawerState.isOpen,
+        scrimColor = if (isDrawerClosed) Color.Transparent else androidx.compose.material3.DrawerDefaults.scrimColor,
         drawerContent = {
             ModalDrawerSheet(
                 drawerContainerColor = MaterialTheme.colorScheme.surface,
-                modifier = Modifier.width(300.dp).alpha(if (!drawerReady || (drawerState.currentValue == DrawerValue.Closed && drawerState.targetValue == DrawerValue.Closed)) 0f else 1f)
+                modifier = Modifier.width(300.dp).alpha(if (!drawerReady || isDrawerClosed) 0f else 1f)
             ) {
                 Column(modifier = Modifier.fillMaxHeight()) {
                     Spacer(Modifier.height(24.dp))
@@ -2318,61 +2321,126 @@ fun HomeScreen(
             } catch (e: Exception) {
                 MaterialTheme.colorScheme.primary
             }
-            Column(modifier = Modifier.padding(16.dp).padding(bottom = 32.dp)) {
-                Text(
-                    contextMenuChecklist!!.name,
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                    modifier = Modifier.padding(bottom = 16.dp)
-                )
-                
-                ListItem(
-                    headlineContent = { Text("Rename Checklist") },
-                    leadingContent = { Icon(Icons.Default.Edit, contentDescription = null) },
-                    modifier = Modifier.clickable { 
-                        renamingChecklist = contextMenuChecklist
-                        contextMenuChecklist = null
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+                    .padding(bottom = 32.dp)
+            ) {
+                // Header
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 24.dp)) {
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .background(checklistColor.copy(alpha = 0.2f), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(imageVector = Icons.Default.Checklist, contentDescription = null, tint = checklistColor)
                     }
-                )
-                ListItem(
-                    headlineContent = { Text("Mark as Completed") },
-                    leadingContent = { Icon(Icons.Default.CheckCircle, contentDescription = null) },
-                    modifier = Modifier.clickable { 
-                        viewModel.markChecklistFinished(contextMenuChecklist!!.id, true)
-                        contextMenuChecklist = null
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = contextMenuChecklist!!.name,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 2,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = "Checklist",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
-                )
-                ListItem(
-                    headlineContent = { Text("Unmark") },
-                    leadingContent = { Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color.Gray) },
-                    modifier = Modifier.clickable { 
-                        viewModel.markChecklistFinished(contextMenuChecklist!!.id, false)
-                        contextMenuChecklist = null
-                    }
-                )
-                ListItem(
-                    headlineContent = { Text("Change Color") },
-                    leadingContent = { Icon(Icons.Default.Build, contentDescription = null, tint = checklistColor) },
-                    modifier = Modifier.clickable {
-                        showColorPickerDialog = contextMenuChecklist
-                        contextMenuChecklist = null
-                    }
-                )
-                ListItem(
-                    headlineContent = { Text("Export as PDF") },
-                    leadingContent = { Icon(Icons.Default.Share, contentDescription = null) },
-                    modifier = Modifier.clickable {
+                }
+
+                // Quick Actions
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { 
                         viewModel.shareChecklistAsPdf(contextMenuChecklist!!.id)
                         contextMenuChecklist = null
+                    }.padding(8.dp)) {
+                        Box(modifier = Modifier.size(48.dp).background(MaterialTheme.colorScheme.surfaceVariant, CircleShape), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.Share, contentDescription = "Share", tint = MaterialTheme.colorScheme.primary)
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("Export PDF", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface)
                     }
-                )
-                ListItem(
-                    headlineContent = { Text("Delete Checklist", color = MaterialTheme.colorScheme.error) },
-                    leadingContent = { Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
-                    modifier = Modifier.clickable { 
+
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { 
+                        showColorPickerDialog = contextMenuChecklist
+                        contextMenuChecklist = null
+                    }.padding(8.dp)) {
+                        Box(modifier = Modifier.size(48.dp).background(MaterialTheme.colorScheme.surfaceVariant, CircleShape), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.Palette, contentDescription = "Color", tint = MaterialTheme.colorScheme.primary)
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("Color", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface)
+                    }
+
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { 
+                        renamingChecklist = contextMenuChecklist
+                        contextMenuChecklist = null
+                    }.padding(8.dp)) {
+                        Box(modifier = Modifier.size(48.dp).background(MaterialTheme.colorScheme.surfaceVariant, CircleShape), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.Edit, contentDescription = "Rename", tint = MaterialTheme.colorScheme.primary)
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("Rename", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface)
+                    }
+
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { 
                         viewModel.deleteChecklist(contextMenuChecklist!!.id)
                         contextMenuChecklist = null
+                    }.padding(8.dp)) {
+                        Box(modifier = Modifier.size(48.dp).background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f), CircleShape), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("Delete", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
                     }
-                )
+                }
+                
+                // List items for specific actions
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
+                        .padding(vertical = 8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { 
+                                viewModel.markChecklistFinished(contextMenuChecklist!!.id, true)
+                                contextMenuChecklist = null
+                            }
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.width(16.dp))
+                        Text("Mark all as Completed", style = MaterialTheme.typography.bodyMedium)
+                    }
+                    Divider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { 
+                                viewModel.markChecklistFinished(contextMenuChecklist!!.id, false)
+                                contextMenuChecklist = null
+                            }
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.RadioButtonUnchecked, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.width(16.dp))
+                        Text("Unmark all", style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
             }
         }
     }
