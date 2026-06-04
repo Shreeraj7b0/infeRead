@@ -297,6 +297,22 @@ fun HomeScreen(
         homePrefs.edit().putStringSet("minimised_sections", newSet).apply()
     }
     
+    var minimisedNavSections by remember { mutableStateOf(homePrefs.getStringSet("minimised_nav_sections", emptySet()) ?: emptySet()) }
+    var minimisedNavBookshelves by remember { mutableStateOf(homePrefs.getStringSet("minimised_nav_bookshelves", emptySet()) ?: emptySet()) }
+    var navPaneWidth by remember { mutableStateOf(homePrefs.getFloat("navpane_width_dp", 300f).dp) }
+
+    val toggleMinimiseNavSection = { sectionName: String ->
+        val newSet = if (minimisedNavSections.contains(sectionName)) minimisedNavSections - sectionName else minimisedNavSections + sectionName
+        minimisedNavSections = newSet
+        homePrefs.edit().putStringSet("minimised_nav_sections", newSet).apply()
+    }
+
+    val toggleMinimiseNavBookshelf = { shelfId: String ->
+        val newSet = if (minimisedNavBookshelves.contains(shelfId)) minimisedNavBookshelves - shelfId else minimisedNavBookshelves + shelfId
+        minimisedNavBookshelves = newSet
+        homePrefs.edit().putStringSet("minimised_nav_bookshelves", newSet).apply()
+    }
+    
     var showCreateChecklistDialog by remember { mutableStateOf(false) }
     var ratingDialogFile by remember { mutableStateOf<LibraryFile?>(null) }
     var renamingChecklist by remember { mutableStateOf<Checklist?>(null) }
@@ -350,11 +366,16 @@ fun HomeScreen(
         gesturesEnabled = drawerState.isOpen,
         scrimColor = if (isDrawerClosed) Color.Transparent else androidx.compose.material3.DrawerDefaults.scrimColor,
         drawerContent = {
-            ModalDrawerSheet(
-                drawerContainerColor = MaterialTheme.colorScheme.surface,
-                modifier = Modifier.width(300.dp).alpha(if (!drawerReady || isDrawerClosed) 0f else 1f)
-            ) {
-                Column(modifier = Modifier.fillMaxHeight()) {
+            SharedNavPane(
+                drawerState = drawerState,
+                drawerReady = drawerReady,
+                isResizable = true,
+                initialWidth = navPaneWidth,
+                onWidthChange = { 
+                    navPaneWidth = it
+                    homePrefs.edit().putFloat("navpane_width_dp", it.value).apply()
+                },
+                headerContent = {
                     Spacer(Modifier.height(24.dp))
                     // Header
                     Row(
@@ -394,24 +415,27 @@ fun HomeScreen(
                             )
                         }
                         Surface(
-                            onClick = { showCreateChecklistDialog = true },
+                            onClick = { 
+                                scope.launch { drawerState.close() }
+                                onNavigateToSettings()
+                            },
                             shape = CircleShape,
-                            color = MaterialTheme.colorScheme.primaryContainer,
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
                             modifier = Modifier.size(32.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
-                                    imageVector = Icons.Default.Add,
-                                    contentDescription = "Create Checklist",
-                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    imageVector = Icons.Default.Settings,
+                                    contentDescription = "Settings",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.size(18.dp)
                                 )
                             }
                         }
                     }
-                    Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                },
+                topActionItem = {
                     Spacer(modifier = Modifier.height(12.dp))
-                    
                     Spacer(modifier = Modifier.height(8.dp))
                     NavigationDrawerItem(
                         label = { Text("My Library", fontWeight = FontWeight.SemiBold) },
@@ -437,26 +461,41 @@ fun HomeScreen(
                         )
                     )
                     Spacer(modifier = Modifier.height(4.dp))
-                    
+                },
+                listContent = {
                     val bookmarkedFiles = remember(libraryFiles) { libraryFiles.filter { it.isBookmarked } }
                     val readingListFiles = remember(libraryFiles) { libraryFiles.filter { it.isToRead } }
 
                     LazyColumn(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f)
+                            .fillMaxSize()
                             .padding(horizontal = 12.dp)
                     ) {
                         item {
-                            Text(
-                                "CHECKLISTS",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                                    letterSpacing = 1.5.sp
-                                ),
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
-                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    "CHECKLISTS",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                        letterSpacing = 1.5.sp
+                                    )
+                                )
+                                IconButton(
+                                    onClick = { showCreateChecklistDialog = true },
+                                    modifier = Modifier.size(24.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Add,
+                                        contentDescription = "Create Checklist",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                    )
+                                }
+                            }
                         }
                         items(checklists, key = { "drawer_checklist_${it.id}" }) { checklist ->
                             val isSelected = activeChecklistId == checklist.id
@@ -514,7 +553,7 @@ fun HomeScreen(
                             items(sectionOrder.filter { it != "Checklists" }, key = { "nav_$it" }) { sectionName ->
                             val filesForCategory = groupedFiles[sectionName] ?: emptyList()
                             if (filesForCategory.isNotEmpty()) {
-                                val isCategoryMinimised = minimisedSections.contains(sectionName)
+                                val isCategoryMinimised = minimisedNavSections.contains(sectionName)
                                 val index = sectionOrder.indexOf(sectionName)
                                 val isDraggingThis = draggedSectionIndex == index
                                 val translationY = if (isDraggingThis) dragOffsetY else 0f
@@ -606,7 +645,7 @@ fun HomeScreen(
                                                 imageVector = if (isCategoryMinimised) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowUp,
                                                 contentDescription = if (isCategoryMinimised) "Expand" else "Collapse",
                                                 tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                                                modifier = Modifier.size(18.dp).clickable { toggleMinimiseSection(sectionName) }
+                                                modifier = Modifier.size(18.dp).clickable { toggleMinimiseNavSection(sectionName) }
                                             )
                                         }
                                         
@@ -856,7 +895,8 @@ fun HomeScreen(
                             }
                         }
                     }
-                    
+                },
+                bottomBarContent = {
                     Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                     Spacer(Modifier.height(12.dp))
                     Row(
@@ -870,7 +910,7 @@ fun HomeScreen(
                         Surface(
                             shape = RoundedCornerShape(12.dp),
                             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-                            modifier = Modifier.weight(1f, fill = false)
+                            modifier = Modifier.fillMaxWidth()
                         ) {
                             Row(
                                 modifier = Modifier.padding(3.dp),
@@ -879,66 +919,48 @@ fun HomeScreen(
                                 Surface(
                                     onClick = { scope.launch { pagerState.animateScrollToPage(0) } },
                                     shape = RoundedCornerShape(10.dp),
-                                    color = if (pagerState.currentPage == 0) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
+                                    color = if (pagerState.currentPage == 0) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                                    modifier = Modifier.weight(1f)
                                 ) {
                                     Row(
-                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 14.dp),
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        horizontalArrangement = Arrangement.Center
                                     ) {
                                         Icon(
                                             Icons.Default.AutoStories, null,
                                             tint = if (pagerState.currentPage == 0) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier.size(16.dp)
+                                            modifier = Modifier.size(20.dp).padding(end = 6.dp)
                                         )
-                                        Text("Library", style = MaterialTheme.typography.labelMedium.copy(fontWeight = if (pagerState.currentPage == 0) FontWeight.Bold else FontWeight.Normal, color = if (pagerState.currentPage == 0) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant))
+                                        Text("Library", style = MaterialTheme.typography.titleSmall.copy(fontWeight = if (pagerState.currentPage == 0) FontWeight.Bold else FontWeight.SemiBold, color = if (pagerState.currentPage == 0) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant), maxLines = 1, overflow = TextOverflow.Ellipsis)
                                     }
                                 }
                                 Spacer(Modifier.width(2.dp))
                                 Surface(
                                     onClick = { scope.launch { pagerState.animateScrollToPage(1) } },
                                     shape = RoundedCornerShape(10.dp),
-                                    color = if (pagerState.currentPage == 1) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
+                                    color = if (pagerState.currentPage == 1) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                                    modifier = Modifier.weight(1f)
                                 ) {
                                     Row(
-                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 14.dp),
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        horizontalArrangement = Arrangement.Center
                                     ) {
                                         Icon(
                                             Icons.Default.CollectionsBookmark, null,
                                             tint = if (pagerState.currentPage == 1) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier.size(16.dp)
+                                            modifier = Modifier.size(20.dp).padding(end = 6.dp)
                                         )
-                                        Text("Shelf", style = MaterialTheme.typography.labelMedium.copy(fontWeight = if (pagerState.currentPage == 1) FontWeight.Bold else FontWeight.Normal, color = if (pagerState.currentPage == 1) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant))
+                                        Text("Shelf", style = MaterialTheme.typography.titleSmall.copy(fontWeight = if (pagerState.currentPage == 1) FontWeight.Bold else FontWeight.SemiBold, color = if (pagerState.currentPage == 1) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant), maxLines = 1, overflow = TextOverflow.Ellipsis)
                                     }
                                 }
-                            }
-                        }
-
-                        Spacer(Modifier.width(8.dp))
-                        Surface(
-                            onClick = { 
-                                scope.launch { drawerState.close() }
-                                onNavigateToSettings()
-                            },
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-                            modifier = Modifier.size(40.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    Icons.Default.Settings,
-                                    contentDescription = "Settings",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(20.dp)
-                                )
                             }
                         }
                     }
                     Spacer(Modifier.height(12.dp))
                 }
-            }
+            )
         }
     ) {
         Scaffold(
@@ -1570,7 +1592,7 @@ fun HomeScreen(
                                                 LazyRow(
                                                     contentPadding = PaddingValues(horizontal = 16.dp),
                                                     horizontalArrangement = Arrangement.spacedBy(16.dp),
-                                                    modifier = Modifier.padding(bottom = 8.dp)
+                                                    modifier = Modifier.padding(bottom = 8.dp).consumeHorizontalNestedScroll()
                                                 ) {
                                                     items(checklists, key = { "home_checklist_${it.id}" }) { checklist ->
                                                         val checklistColor = try {
@@ -1709,7 +1731,8 @@ fun HomeScreen(
                                         ) {
                                             LazyRow(
                                                 contentPadding = PaddingValues(horizontal = 16.dp),
-                                                horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                                modifier = Modifier.consumeHorizontalNestedScroll()
                                             ) {
                                                 items(filesForCategory, key = { "home_file_${it.id}" }) { file ->
                                                     Column(
@@ -1950,6 +1973,25 @@ fun HomeScreen(
                                             sortExpanded = false
                                         }
                                     )
+                                    Divider()
+                                    Text("Minimise/Maximise All", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), color = MaterialTheme.colorScheme.primary)
+                                    DropdownMenuItem(
+                                        text = { Text("Minimise All") },
+                                        onClick = {
+                                            val newSet = availableSections.toSet()
+                                            minimisedSections = newSet
+                                            homePrefs.edit().putStringSet("minimised_sections", newSet).apply()
+                                            sortExpanded = false
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Maximise All") },
+                                        onClick = {
+                                            minimisedSections = emptySet()
+                                            homePrefs.edit().putStringSet("minimised_sections", emptySet()).apply()
+                                            sortExpanded = false
+                                        }
+                                    )
                                 }
                             } else if (pagerState.currentPage == 1) {
                                 FloatingActionButton(
@@ -1972,6 +2014,22 @@ fun HomeScreen(
                                     DropdownMenuItem(
                                         text = { Text(if (bookshelfViewMode == 0) "Switch to Vertical Stack" else "Switch to Shelf Stack") },
                                         onClick = { bookshelfViewMode = if (bookshelfViewMode == 0) 1 else 0; homePrefs.edit().putInt("bookshelf_view_mode", bookshelfViewMode).apply(); sortExpanded = false }
+                                    )
+                                    Divider()
+                                    Text("Minimise/Maximise All", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), color = MaterialTheme.colorScheme.primary)
+                                    DropdownMenuItem(
+                                        text = { Text("Minimise All") },
+                                        onClick = {
+                                            viewModel.setAllBookshelvesMinimised(true)
+                                            sortExpanded = false
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Maximise All") },
+                                        onClick = {
+                                            viewModel.setAllBookshelvesMinimised(false)
+                                            sortExpanded = false
+                                        }
                                     )
                                 }
                             }

@@ -4,6 +4,7 @@ import androidx.compose.animation.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -260,7 +261,13 @@ fun BookShelfTab(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(MaterialTheme.colorScheme.surfaceVariant)
-                    .pointerInput(Unit) {}
+                    .pointerInput(Unit) {
+                        detectVerticalDragGestures { _, dragAmount ->
+                            if (dragAmount > 10f) {
+                                onToggleAssignmentMode()
+                            }
+                        }
+                    }
                     .padding(8.dp)
             ) {
                 Row(
@@ -283,7 +290,7 @@ fun BookShelfTab(
                     libraryFiles.filter { it.id !in assignedIds }
                 }
                 LazyRow(
-                    modifier = Modifier.padding(vertical = 8.dp),
+                    modifier = Modifier.padding(vertical = 8.dp).consumeHorizontalNestedScroll(),
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                     contentPadding = PaddingValues(horizontal = 16.dp)
                 ) {
@@ -666,7 +673,6 @@ fun BookshelfRow(
     onRemoveFileFromShelf: (Int) -> Unit = {}
 ) {
     var showMenu by remember { mutableStateOf(false) }
-    var isMinimised by remember { mutableStateOf(shelf.isMinimised) }
     val parsedColor = try {
         Color(android.graphics.Color.parseColor(shelf.colorHex))
     } catch (e: Exception) {
@@ -715,13 +721,12 @@ fun BookshelfRow(
                 // Minimise toggle
                 IconButton(
                     onClick = {
-                        isMinimised = !isMinimised
-                        viewModel.updateBookshelfMinimised(shelf.id, isMinimised)
+                        viewModel.updateBookshelfMinimised(shelf.id, !shelf.isMinimised)
                     },
                     modifier = Modifier.size(36.dp)
                 ) {
                     Icon(
-                        if (isMinimised) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowUp,
+                        if (shelf.isMinimised) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowUp,
                         contentDescription = null,
                         modifier = Modifier.size(18.dp)
                     )
@@ -889,7 +894,7 @@ fun BookshelfRow(
         }
 
         // ── Shelf Content ───────────────────────────────────────────────────
-        AnimatedVisibility(visible = !isMinimised) {
+        AnimatedVisibility(visible = !shelf.isMinimised) {
             Box(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
@@ -909,7 +914,7 @@ fun BookshelfRow(
                     // ── Horizontal shelf (default) ──
                     LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth().consumeHorizontalNestedScroll()
                     ) {
                         items(files, key = { it.id }) { file ->
                             BookshelfFileItem(

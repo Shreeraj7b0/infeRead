@@ -757,6 +757,14 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun setAllBookshelvesMinimised(isMinimised: Boolean) {
+        viewModelScope.launch {
+            bookshelves.value.forEach { shelf ->
+                repository.updateBookshelfMinimised(shelf.id, isMinimised)
+            }
+        }
+    }
+
     fun updateBookshelvesOrder(bookshelves: List<com.infer.inferead.data.Bookshelf>) {
         viewModelScope.launch {
             repository.updateBookshelvesOrder(bookshelves)

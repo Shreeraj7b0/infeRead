@@ -114,6 +114,7 @@ fun ReaderScreen(
     fileId: Int,
     onNavigateBack: () -> Unit,
     onNavigateToChecklist: (Int) -> Unit,
+    onNavigateToSettings: () -> Unit = {},
     viewModel: ReaderViewModel = viewModel()
 ) {
     val currentFile by viewModel.currentFile.collectAsState()
@@ -236,6 +237,8 @@ fun ReaderScreen(
         editingThumbnailFileId = null
     }
 
+    val navPaneWidth by remember { mutableStateOf(homePrefs.getFloat("navpane_width_dp", 300f).dp) }
+
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     
@@ -324,72 +327,128 @@ fun ReaderScreen(
         gesturesEnabled = drawerState.isOpen,
         scrimColor = if (isDrawerClosed) Color.Transparent else androidx.compose.material3.DrawerDefaults.scrimColor,
         drawerContent = {
-            ModalDrawerSheet(
-                drawerContainerColor = MaterialTheme.colorScheme.surface,
-                modifier = Modifier.width(220.dp).alpha(if (isDrawerClosed) 0f else 1f)
-            ) {
-                Column(modifier = Modifier.fillMaxHeight()) {
+            SharedNavPane(
+                drawerState = drawerState,
+                drawerReady = true, // Reader screen doesn't have the initial animation issue
+                isResizable = false,
+                initialWidth = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp * 0.6f,
+                onWidthChange = {},
+                headerContent = {
                     Spacer(Modifier.height(24.dp))
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            "Checklists",
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        )
-                        IconButton(
-                            onClick = { showCreateChecklistDialog = true },
-                            modifier = Modifier.size(28.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Add,
-                                contentDescription = "Create Checklist",
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(20.dp)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier.size(36.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(
+                                        androidx.compose.ui.graphics.Brush.linearGradient(
+                                            colors = listOf(
+                                                MaterialTheme.colorScheme.primary,
+                                                MaterialTheme.colorScheme.tertiary
+                                            )
+                                        )
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.AutoStories,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            Spacer(Modifier.width(12.dp))
+                            Text(
+                                "infeRead",
+                                style = MaterialTheme.typography.titleLarge.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    letterSpacing = (-0.5).sp
+                                )
                             )
                         }
+                        Surface(
+                            onClick = { 
+                                scope.launch { drawerState.close() }
+                                onNavigateToSettings()
+                            },
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.Settings,
+                                    contentDescription = "Settings",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
                     }
-                    Divider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f))
+                },
+                topActionItem = {
                     Spacer(modifier = Modifier.height(8.dp))
-                    
                     NavigationDrawerItem(
-                        label = { Text("My Library", fontWeight = FontWeight.Medium) },
-                        selected = false,
+                        label = { Text("My Library", fontWeight = FontWeight.Bold) },
+                        selected = true,
+                        icon = { 
+                            Icon(
+                                Icons.Default.AutoStories, 
+                                contentDescription = null, 
+                                tint = MaterialTheme.colorScheme.primary
+                            ) 
+                        },
                         onClick = { 
-                            scope.launch { drawerState.close() }
+                            scope.launch { drawerState.close() } 
                             onNavigateBack()
                         },
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp).height(40.dp),
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp).height(48.dp),
+                        shape = RoundedCornerShape(12.dp),
                         colors = NavigationDrawerItemDefaults.colors(
-                            selectedContainerColor = Color.Transparent,
+                            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
                             unselectedContainerColor = Color.Transparent,
                             selectedTextColor = MaterialTheme.colorScheme.primary,
-                            unselectedTextColor = MaterialTheme.colorScheme.onBackground
+                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     )
                     Spacer(modifier = Modifier.height(4.dp))
-                    
+                },
+                listContent = {
                     val primaryColor = MaterialTheme.colorScheme.primary
                     LazyColumn(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f)
+                            .fillMaxSize()
                             .padding(horizontal = 16.dp)
                     ) {
                         item {
-                            Text(
-                                "Checklists",
-                                style = MaterialTheme.typography.labelMedium.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary
-                                ),
-                                modifier = Modifier.padding(vertical = 4.dp)
-                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    "Checklists",
+                                    style = MaterialTheme.typography.labelMedium.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                )
+                                IconButton(
+                                    onClick = { showCreateChecklistDialog = true },
+                                    modifier = Modifier.size(24.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Add,
+                                        contentDescription = "Create Checklist",
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
                         }
                         items(checklists) { checklist ->
                             Row(
@@ -628,44 +687,66 @@ fun ReaderScreen(
                             }
                         }
                     }
-                    
+                },
+                bottomBarContent = {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 8.dp, vertical = 8.dp),
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(50))
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                                .padding(4.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(50))
-                                    .background(if (activeTab == 0) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
-                                    .clickable { activeTab = 0 }
-                                    .padding(horizontal = 12.dp, vertical = 6.dp)
-                            ) {
-                                Text("Library", style = MaterialTheme.typography.labelMedium.copy(fontWeight = if (activeTab == 0) FontWeight.Bold else FontWeight.Normal, color = if (activeTab == 0) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface))
-                            }
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(50))
-                                    .background(if (activeTab == 1) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
-                                    .clickable { activeTab = 1 }
-                                    .padding(horizontal = 12.dp, vertical = 6.dp)
-                            ) {
-                                Text("BookShelf", style = MaterialTheme.typography.labelMedium.copy(fontWeight = if (activeTab == 1) FontWeight.Bold else FontWeight.Normal, color = if (activeTab == 1) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface))
+                            Row(modifier = Modifier.padding(4.dp)) {
+                                Surface(
+                                    onClick = { activeTab = 0 },
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = if (activeTab == 0) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 14.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.Center
+                                    ) {
+                                        Icon(
+                                            Icons.Default.AutoStories, null,
+                                            tint = if (activeTab == 0) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(20.dp).padding(end = 6.dp)
+                                        )
+                                        Text("Library", style = MaterialTheme.typography.titleSmall.copy(fontWeight = if (activeTab == 0) FontWeight.Bold else FontWeight.SemiBold, color = if (activeTab == 0) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    }
+                                }
+                                Spacer(Modifier.width(2.dp))
+                                Surface(
+                                    onClick = { activeTab = 1 },
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = if (activeTab == 1) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 14.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.Center
+                                    ) {
+                                        Icon(
+                                            Icons.Default.CollectionsBookmark, null,
+                                            tint = if (activeTab == 1) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(20.dp).padding(end = 6.dp)
+                                        )
+                                        Text("Shelf", style = MaterialTheme.typography.titleSmall.copy(fontWeight = if (activeTab == 1) FontWeight.Bold else FontWeight.SemiBold, color = if (activeTab == 1) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    }
+                                }
                             }
                         }
                     }
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(12.dp))
                 }
-            }
+            )
         }
     ) {
         Scaffold(
@@ -1181,9 +1262,11 @@ fun ReaderScreen(
                     if (editingHighlight != null) {
                         AlertDialog(
                             onDismissRequest = { editingHighlight = null },
+                            shape = RoundedCornerShape(16.dp),
+                            tonalElevation = 8.dp,
                             title = { Text("Highlight Options") },
                             text = {
-                                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                                     Text(
                                         text = "\"${editingHighlight!!.selectedText.trim()}\"",
                                         style = MaterialTheme.typography.bodyMedium.copy(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic),
@@ -1228,19 +1311,23 @@ fun ReaderScreen(
                                 commentText = ""
                                 commentingSelectionData = null
                             },
+                            shape = RoundedCornerShape(16.dp),
+                            tonalElevation = 8.dp,
                             title = { Text("Edit Annotation") },
                             text = {
                                 Column {
-                                    Text("Selected: \"${editingAnnotation!!.selectedText.take(50)}${if (editingAnnotation!!.selectedText.length > 50) "..." else ""}\"", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
-                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text("Selected: \"${editingAnnotation!!.selectedText.take(50)}${if (editingAnnotation!!.selectedText.length > 50) "..." else ""}\"", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Spacer(modifier = Modifier.height(12.dp))
                                     OutlinedTextField(
                                         value = commentText,
                                         onValueChange = { if (it.length <= 500) commentText = it },
                                         modifier = Modifier.fillMaxWidth().height(120.dp),
                                         placeholder = { Text("Enter your comment (max 500 chars)") },
-                                        maxLines = 5
+                                        maxLines = 5,
+                                        shape = RoundedCornerShape(12.dp)
                                     )
-                                    Text("${commentText.length}/500", style = MaterialTheme.typography.labelSmall, modifier = Modifier.align(Alignment.End))
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text("${commentText.length}/500", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.align(Alignment.End))
                                 }
                             },
                             confirmButton = {
@@ -1285,19 +1372,23 @@ fun ReaderScreen(
                                 commentText = ""
                                 commentingSelectionData = null
                             },
+                            shape = RoundedCornerShape(16.dp),
+                            tonalElevation = 8.dp,
                             title = { Text("Add Comment") },
                             text = {
                                 Column {
-                                    Text("Selected: \"${sel.text.take(50)}${if (sel.text.length > 50) "..." else ""}\"", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
-                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text("Selected: \"${sel.text.take(50)}${if (sel.text.length > 50) "..." else ""}\"", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Spacer(modifier = Modifier.height(12.dp))
                                     OutlinedTextField(
                                         value = commentText,
                                         onValueChange = { if (it.length <= 500) commentText = it },
                                         modifier = Modifier.fillMaxWidth().height(120.dp),
                                         placeholder = { Text("Enter your comment (max 500 chars)") },
-                                        maxLines = 5
+                                        maxLines = 5,
+                                        shape = RoundedCornerShape(12.dp)
                                     )
-                                    Text("${commentText.length}/500", style = MaterialTheme.typography.labelSmall, modifier = Modifier.align(Alignment.End))
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text("${commentText.length}/500", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.align(Alignment.End))
                                 }
                             },
                             confirmButton = {
@@ -2329,6 +2420,46 @@ fun ReaderScreen(
                 targetScrollAnnId = ann.id
             },
             onDismiss = { showPageAnnotationManager = false }
+        )
+    }
+    if (showCreateChecklistDialog) {
+        var checklistName by remember { mutableStateOf("") }
+        val focusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
+        LaunchedEffect(Unit) {
+            focusRequester.requestFocus()
+        }
+        AlertDialog(
+            onDismissRequest = { showCreateChecklistDialog = false },
+            shape = RoundedCornerShape(16.dp),
+            tonalElevation = 8.dp,
+            title = { Text("Create Checklist") },
+            text = {
+                OutlinedTextField(
+                    modifier = Modifier.focusRequester(focusRequester).fillMaxWidth(),
+                    value = checklistName,
+                    onValueChange = { checklistName = it },
+                    placeholder = { Text("Checklist Name") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp)
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (checklistName.isNotBlank()) {
+                            homeViewModel.createChecklist(checklistName)
+                            showCreateChecklistDialog = false
+                        }
+                    }
+                ) {
+                    Text("Create")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCreateChecklistDialog = false }) {
+                    Text("Cancel")
+                }
+            }
         )
     }
 

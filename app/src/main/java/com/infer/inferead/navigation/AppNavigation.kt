@@ -92,7 +92,8 @@ fun AppNavigation(
                     navController.navigate("home?checklistId=$checklistId") {
                         popUpTo("home") { inclusive = true }
                     }
-                }
+                },
+                onNavigateToSettings = { navController.navigate("settings") }
             )
         }
     }

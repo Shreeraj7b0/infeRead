@@ -52,31 +52,69 @@ import androidx.glance.ImageProvider
 import androidx.glance.layout.ContentScale
 import android.graphics.BitmapFactory
 
+import android.graphics.Bitmap
+
 class InfeReadWidget : GlanceAppWidget() {
     override val stateDefinition = PreferencesGlanceStateDefinition
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val database = InfeReadDatabase.getDatabase(context)
-        val allFiles = database.infeReadDao().getAllLibraryFiles().first()
+        val allFiles = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { 
+            database.infeReadDao().getAllLibraryFiles().first() 
+        }
+
+        val prefs = androidx.glance.appwidget.state.getAppWidgetState(context, PreferencesGlanceStateDefinition, id)
+        val mode = prefs[stringPreferencesKey("widget_mode")] ?: "BOOKMARKS"
+        
+        val displayFiles = if (mode == "BOOKMARKS") {
+            allFiles.filter { it.isBookmarked || it.rating > 0 }
+        } else {
+            allFiles.filter { it.isToRead }
+        }.sortedByDescending { it.addedAt }.take(12) // Limit to top 12 to avoid slow loads
+
+        val bitmaps = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            displayFiles.associate { file ->
+                val bitmap = file.thumbnailUri?.let { uriString ->
+                    try {
+                        val uri = Uri.parse(uriString)
+                        val isFile = uri.scheme == "file" || uriString.startsWith("/")
+                        val getStream = {
+                            if (isFile) java.io.FileInputStream(java.io.File(uriString.removePrefix("file://")))
+                            else context.contentResolver.openInputStream(uri)
+                        }
+                        val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                        getStream()?.use { BitmapFactory.decodeStream(it, null, options) }
+                        
+                        var inSampleSize = 1
+                        val reqWidth = 140
+                        val reqHeight = 200
+                        if (options.outHeight > reqHeight || options.outWidth > reqWidth) {
+                            val halfHeight = options.outHeight / 2
+                            val halfWidth = options.outWidth / 2
+                            while (halfHeight / inSampleSize >= reqHeight && halfWidth / inSampleSize >= reqWidth) {
+                                inSampleSize *= 2
+                            }
+                        }
+                        val finalOptions = BitmapFactory.Options().apply { this.inSampleSize = inSampleSize }
+                        getStream()?.use { BitmapFactory.decodeStream(it, null, finalOptions) }
+                    } catch (e: Exception) { null }
+                }
+                file.id to bitmap
+            }
+        }
 
         provideContent {
-            val prefs = currentState<Preferences>()
-            val mode = prefs[stringPreferencesKey("widget_mode")] ?: "BOOKMARKS"
-            val showMenu = prefs[androidx.datastore.preferences.core.booleanPreferencesKey("widget_show_menu")] ?: false
-            val bgColorInt = prefs[intPreferencesKey("widget_bg_color")] ?: android.graphics.Color.parseColor("#E5E5E5")
-            val alpha = prefs[intPreferencesKey("widget_alpha")] ?: 200
+            val livePrefs = currentState<Preferences>()
+            val liveMode = livePrefs[stringPreferencesKey("widget_mode")] ?: "BOOKMARKS"
+            val showMenu = livePrefs[androidx.datastore.preferences.core.booleanPreferencesKey("widget_show_menu")] ?: false
+            val bgColorInt = livePrefs[intPreferencesKey("widget_bg_color")] ?: android.graphics.Color.parseColor("#E5E5E5")
+            val alpha = livePrefs[intPreferencesKey("widget_alpha")] ?: 200
             
             // Reconstruct color with alpha
             val r = android.graphics.Color.red(bgColorInt)
             val g = android.graphics.Color.green(bgColorInt)
             val b = android.graphics.Color.blue(bgColorInt)
             val bgColor = Color(r, g, b, alpha)
-
-            val displayFiles = if (mode == "BOOKMARKS") {
-                allFiles.filter { it.isBookmarked || it.rating > 0 }
-            } else {
-                allFiles.filter { it.isToRead }
-            }.sortedByDescending { it.addedAt }
 
             GlanceTheme {
                 Column(
@@ -90,29 +128,28 @@ class InfeReadWidget : GlanceAppWidget() {
                     Row(
                         modifier = GlanceModifier
                             .fillMaxWidth()
-                            .background(GlanceTheme.colors.primaryContainer)
+                            .background(GlanceTheme.colors.primary)
                             .cornerRadius(16.dp)
                             .padding(12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = if (mode == "BOOKMARKS") "🔖 Bookmarks ▼" else "📚 Reading List ▼",
+                            text = if (liveMode == "BOOKMARKS") "Bookmarks ▼" else "Reading List ▼",
                             style = TextStyle(
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = GlanceTheme.colors.onPrimaryContainer
+                                color = GlanceTheme.colors.onPrimary
                             ),
                             modifier = GlanceModifier.clickable(actionRunCallback<ToggleMenuAction>())
                         )
                         Spacer(modifier = GlanceModifier.defaultWeight())
                         
-                        val context = LocalContext.current
                         val configIntent = Intent(context, InfeReadWidgetConfigActivity::class.java).apply {
                             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
                         }
                         Text(
-                            text = "⚙️",
-                            style = TextStyle(fontSize = 16.sp),
+                            text = "Settings",
+                            style = TextStyle(fontSize = 16.sp, color = GlanceTheme.colors.onPrimary),
                             modifier = GlanceModifier.clickable(actionStartActivity(configIntent)).padding(4.dp)
                         )
                     }
@@ -128,8 +165,8 @@ class InfeReadWidget : GlanceAppWidget() {
                                 .padding(8.dp)
                         ) {
                             val modeKey = ActionParameters.Key<String>("mode")
-                            Text("Bookmarks", style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 15.sp, fontWeight = FontWeight.Normal), modifier = GlanceModifier.fillMaxWidth().padding(8.dp).clickable(actionRunCallback<SelectModeAction>(actionParametersOf(modeKey to "BOOKMARKS"))))
-                            Text("Reading List", style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 15.sp, fontWeight = FontWeight.Normal), modifier = GlanceModifier.fillMaxWidth().padding(8.dp).clickable(actionRunCallback<SelectModeAction>(actionParametersOf(modeKey to "READING_LIST"))))
+                            Text("Bookmarks", style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 15.sp), modifier = GlanceModifier.fillMaxWidth().padding(8.dp).clickable(actionRunCallback<SelectModeAction>(actionParametersOf(modeKey to "BOOKMARKS"))))
+                            Text("Reading List", style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 15.sp), modifier = GlanceModifier.fillMaxWidth().padding(8.dp).clickable(actionRunCallback<SelectModeAction>(actionParametersOf(modeKey to "READING_LIST"))))
                         }
                         Spacer(modifier = GlanceModifier.height(12.dp))
                     }
@@ -137,16 +174,30 @@ class InfeReadWidget : GlanceAppWidget() {
                     // Vertical Scrollable File Grid
                     if (displayFiles.isEmpty()) {
                         Box(modifier = GlanceModifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Text("No books found", style = TextStyle(color = GlanceTheme.colors.onSurface, fontSize = 16.sp, fontWeight = FontWeight.Normal))
+                            Text("No books found", style = TextStyle(color = GlanceTheme.colors.onSurface, fontSize = 16.sp))
                         }
                     } else {
-                        LazyVerticalGrid(
-                            gridCells = GridCells.Adaptive(90.dp),
+                        androidx.glance.appwidget.lazy.LazyColumn(
                             modifier = GlanceModifier.fillMaxSize()
                         ) {
-                            items(displayFiles) { file ->
-                                Box(modifier = GlanceModifier.padding(6.dp), contentAlignment = Alignment.TopCenter) {
-                                    FileWidgetCard(file = file)
+                            val chunkedFiles: List<List<LibraryFile>> = displayFiles.chunked(3)
+                            items(chunkedFiles) { rowFiles: List<LibraryFile> ->
+                                Row(
+                                    modifier = GlanceModifier.fillMaxWidth().padding(bottom = 12.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    rowFiles.forEach { file ->
+                                        Box(
+                                            modifier = GlanceModifier.defaultWeight().padding(horizontal = 4.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            FileWidgetCard(file = file, bitmap = bitmaps[file.id])
+                                        }
+                                    }
+                                    // Add empty spacers if row has less than 3 items to keep alignment
+                                    repeat(3 - rowFiles.size) {
+                                        Spacer(modifier = GlanceModifier.defaultWeight().padding(horizontal = 4.dp))
+                                    }
                                 }
                             }
                         }
@@ -183,7 +234,7 @@ class SelectModeAction : ActionCallback {
 }
 
 @Composable
-fun FileWidgetCard(file: LibraryFile) {
+fun FileWidgetCard(file: LibraryFile, bitmap: Bitmap?) {
     // Generate Deep Link Intent
     val intent = Intent(
         Intent.ACTION_VIEW,
@@ -199,38 +250,6 @@ fun FileWidgetCard(file: LibraryFile) {
             .clickable(actionStartActivity(intent)),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        val context = LocalContext.current
-        val bitmap = file.thumbnailUri?.let { uriString ->
-            try {
-                val uri = Uri.parse(uriString)
-                val isFile = uri.scheme == "file" || uriString.startsWith("/")
-                
-                fun getStream() = if (isFile) {
-                    java.io.FileInputStream(java.io.File(uriString.removePrefix("file://")))
-                } else {
-                    context.contentResolver.openInputStream(uri)
-                }
-
-                val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                getStream()?.use { BitmapFactory.decodeStream(it, null, options) }
-                
-                var inSampleSize = 1
-                val reqWidth = 140
-                val reqHeight = 200
-                if (options.outHeight > reqHeight || options.outWidth > reqWidth) {
-                    val halfHeight: Int = options.outHeight / 2
-                    val halfWidth: Int = options.outWidth / 2
-                    while (halfHeight / inSampleSize >= reqHeight && halfWidth / inSampleSize >= reqWidth) {
-                        inSampleSize *= 2
-                    }
-                }
-                val finalOptions = BitmapFactory.Options().apply { this.inSampleSize = inSampleSize }
-                getStream()?.use { BitmapFactory.decodeStream(it, null, finalOptions) }
-            } catch (e: Exception) {
-                null
-            }
-        }
-
         if (bitmap != null) {
             Image(
                 provider = ImageProvider(bitmap),
