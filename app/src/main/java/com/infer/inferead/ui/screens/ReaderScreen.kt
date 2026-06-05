@@ -824,9 +824,8 @@ fun ReaderScreen(
                                         ),
                                         modifier = Modifier.clickable { formatDropdownExpanded = true }
                                     ) {
-                                        val ext = currentFile?.filePath?.substringAfterLast('.', "")?.lowercase()
                                         Text(
-                                            text = if (ext.isNullOrEmpty()) format else ".$ext",
+                                            text = format,
                                             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                         )
@@ -1938,7 +1937,27 @@ fun ReaderScreen(
                         IconButton(onClick = { 
                             showSettingsSheet = false
                             viewModel.setShowAnnotationManager(true) 
-                        }) { Icon(Icons.Default.Search, contentDescription = "Search Annotations", tint = textColor) }
+                        }) { Icon(Icons.Default.Edit, contentDescription = "Edit Annotations", tint = textColor) }
+                        
+                        var showHiddenMenu by remember { mutableStateOf(false) }
+                        Box {
+                            IconButton(onClick = { showHiddenMenu = true }) { 
+                                Icon(Icons.Default.KeyboardArrowDown, contentDescription = "More Options", tint = textColor) 
+                            }
+                            androidx.compose.material3.DropdownMenu(
+                                expanded = showHiddenMenu,
+                                onDismissRequest = { showHiddenMenu = false }
+                            ) {
+                                androidx.compose.material3.DropdownMenuItem(
+                                    text = { Text("Search File") },
+                                    onClick = { showHiddenMenu = false }
+                                )
+                                androidx.compose.material3.DropdownMenuItem(
+                                    text = { Text("Other Options") },
+                                    onClick = { showHiddenMenu = false }
+                                )
+                            }
+                        }
                     }
                     
                     if (showCommentOptions) {

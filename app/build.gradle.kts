@@ -84,4 +84,7 @@ dependencies {
     // Jetpack Glance for App Widgets
     implementation("androidx.glance:glance-appwidget:1.0.0")
     implementation("androidx.glance:glance-material3:1.0.0")
+
+    // JSoup for EPUB sanitization and splitting
+    implementation("org.jsoup:jsoup:1.17.2")
 }

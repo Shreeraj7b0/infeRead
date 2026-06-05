@@ -1605,32 +1605,6 @@ fun EPUBReader(
                             display: block !important;
                             margin: auto !important;
                         }
-                    """ else if (isHorizontal) """
-                        html {
-                            overflow: hidden !important;
-                            height: 100% !important;
-                            width: 100% !important;
-                            background-color: transparent !important;
-                        }
-                        ::-webkit-scrollbar { display: none !important; }
-                        body {
-                            margin: 0 !important;
-                            padding: 0 !important;
-                            height: 100vh !important;
-                            width: 100vw !important;
-                            overflow: hidden !important;
-                            box-sizing: border-box !important;
-                            word-wrap: break-word !important;
-                            word-break: break-word !important;
-                            white-space: normal !important;
-                        }
-                        img {
-                            max-width: 100vw !important;
-                            max-height: 100vh !important;
-                            object-fit: contain !important;
-                            display: block !important;
-                            margin: 0 auto !important;
-                        }
                     """ else """
                         html, body {
                             background-color: transparent !important;
@@ -1655,94 +1629,63 @@ fun EPUBReader(
                     """
                     
                     val positionOverride = if (isArchiveOrg && !isFixedLayout) "position: static !important;" else ""
-                    val ocrHideCss = if (isFixedLayout) """
-                        p, div, span, h1, h2, h3, h4, h5, h6, a {
-                            color: transparent !important;
-                            background-color: transparent !important;
-                            font-size: 0px !important;
-                        }
-                    """ else ""
                     
                     val einkFilter = if (settings.contrastMode == com.infer.inferead.viewmodel.ContrastMode.EInk) "filter: grayscale(100%) !important;" else ""
 
                     """
                         javascript:(function() {
-                            var oldStyle = document.getElementById('infe-custom-styles');
-                              if(oldStyle) oldStyle.remove();
-                              var style = document.createElement('style');
-                              style.id = 'infe-custom-styles';
-                            style.innerHTML = `
-                                $fontFaces
-                                $layoutCss
-                                html {
-                                    $einkFilter
-                                    -webkit-touch-callout: none;
-                                    -webkit-user-select: text;
-                                    user-select: text;
-                                }
-                                body {
-                                    color: $textColor !important;
-                                    ${if (fontFamily != "Original") "font-family: $fontFamily, sans-serif !important;" else ""}
-                                    font-size: ${fontSize}px !important;
-                                    background-color: transparent !important;
-                                    line-height: ${1.6f * settings.lineSpacingMultiplier} !important;
-                                    letter-spacing: ${(settings.wordSpacingMultiplier - 1.0f) * 0.1f}em !important;
-                                    $boldRule
-                                }
-                                p, div, span:not(.inferead-annotation), a, li, blockquote, h1, h2, h3, h4, h5, h6 {
-                                    color: $textColor !important;
-                                    ${if (fontFamily != "Original") "font-family: $fontFamily, sans-serif !important;" else ""}
-                                    background-color: transparent !important;
-                                    $boldRule
-                                    $positionOverride
-                                }
-                                .inferead-annotation {
-                                    color: $textColor !important;
-                                    ${if (fontFamily != "Original") "font-family: $fontFamily, sans-serif !important;" else ""}
-                                    $boldRule
-                                }
-                                $ocrHideCss
-                            `;
-                            document.head.appendChild(style);
-                            
                             var imgs = document.getElementsByTagName('img').length;
                             var textLen = document.body.innerText.trim().length;
                             var isManga = ($isFixedLayout || (imgs > 0 && textLen < 150));
                             
-                            if (isManga) {
-                                var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
-                                var nodes = [];
-                                while (walker.nextNode()) nodes.push(walker.currentNode);
-                                for (var i = 0; i < nodes.length; i++) nodes[i].nodeValue = '';
+                            if (!isManga) {
+                                var oldStyle = document.getElementById('infe-custom-styles');
+                                  if(oldStyle) oldStyle.remove();
+                                  var style = document.createElement('style');
+                                  style.id = 'infe-custom-styles';
+                                style.innerHTML = `
+                                    $fontFaces
+                                    $layoutCss
+                                    html {
+                                        $einkFilter
+                                        -webkit-touch-callout: none;
+                                        -webkit-user-select: text;
+                                        user-select: text;
+                                    }
+                                    body {
+                                        color: $textColor !important;
+                                        ${if (fontFamily != "Original") "font-family: $fontFamily, sans-serif !important;" else ""}
+                                        font-size: ${fontSize}px !important;
+                                        background-color: transparent !important;
+                                        line-height: ${1.6f * settings.lineSpacingMultiplier} !important;
+                                        letter-spacing: ${(settings.wordSpacingMultiplier - 1.0f) * 0.1f}em !important;
+                                        $boldRule
+                                    }
+                                    p, div, span:not(.inferead-annotation), a, li, blockquote, h1, h2, h3, h4, h5, h6 {
+                                        color: $textColor !important;
+                                        ${if (fontFamily != "Original") "font-family: $fontFamily, sans-serif !important;" else ""}
+                                        background-color: transparent !important;
+                                        $boldRule
+                                        $positionOverride
+                                    }
+                                    .inferead-annotation {
+                                        color: $textColor !important;
+                                        ${if (fontFamily != "Original") "font-family: $fontFamily, sans-serif !important;" else ""}
+                                        $boldRule
+                                    }
+                                `;
+                                document.head.appendChild(style);
+                            } else {
                                 document.body.style.backgroundColor = 'transparent';
                                 document.documentElement.style.backgroundColor = 'transparent';
-                            } else if ($isHorizontal) {
-                                if (!document.getElementById('infe-wrapper')) {
-                                    var wrap = document.createElement('div');
-                                    wrap.id = 'infe-wrapper';
-                                    wrap.style.columnWidth = '100vw';
-                                    wrap.style.WebkitColumnWidth = '100vw';
-                                    wrap.style.columnGap = '0px';
-                                    wrap.style.WebkitColumnGap = '0px';
-                                    wrap.style.height = '100vh';
-                                    wrap.style.width = '100vw';
-                                    wrap.style.overflowX = 'auto';
-                                    wrap.style.overflowY = 'hidden';
-                                    wrap.style.boxSizing = 'border-box';
-                                    wrap.style.padding = '20px 16px';
-                                    wrap.style.margin = '0';
-                                    while (document.body.firstChild) {
-                                        wrap.appendChild(document.body.firstChild);
-                                    }
-                                    document.body.appendChild(wrap);
-                                }
+                                ${if (settings.contrastMode == com.infer.inferead.viewmodel.ContrastMode.EInk) "document.body.style.filter = 'grayscale(100%)';" else ""}
                             }
                             
                             var scrollTimeout;
                             function handleScroll() {
                                 Android.reportScroll(true);
                                 
-                                if (!$isHorizontal && !isManga) {
+                                if (!isManga) {
                                     var maxScroll = document.documentElement.scrollHeight - window.innerHeight;
                                     var progress = maxScroll > 0 ? window.scrollY / maxScroll : 0;
                                     Android.reportScrollProgress(progress);
@@ -1754,17 +1697,15 @@ fun EPUBReader(
                                 }, 500);
                             }
                             window.addEventListener('scroll', handleScroll, {passive: true});
-                            var wrapEl = document.getElementById('infe-wrapper');
-                            if (wrapEl) { wrapEl.addEventListener('scroll', handleScroll, {passive: true}); }
                             
                             window.scrollToProgress = function(progress) {
-                                if (!$isHorizontal && !isManga) {
+                                if (!isManga) {
                                     var maxScroll = document.documentElement.scrollHeight - window.innerHeight;
                                     window.scrollTo(0, maxScroll * progress);
                                 }
                             };
                             
-                            if (!document.getElementById('epub-next-btn')) {
+                            if (!document.getElementById('epub-next-btn') && !isManga) {
                                 var btnContainer = document.createElement('div');
                                 btnContainer.id = 'epub-next-btn';
                                 btnContainer.style.textAlign = 'center';
@@ -1785,60 +1726,38 @@ fun EPUBReader(
                                 document.body.appendChild(btnContainer);
                             }
                             
-                            var touchStartX = 0;
-                            var touchStartY = 0;
-                            document.addEventListener('touchstart', function(e) {
-                                touchStartX = e.changedTouches[0].screenX;
-                                touchStartY = e.changedTouches[0].screenY;
-                            }, {passive: true});
-                            
-                            document.addEventListener('touchend', function(e) {
-                                var touchEndX = e.changedTouches[0].screenX;
-                                var touchEndY = e.changedTouches[0].screenY;
-                                var dx = touchEndX - touchStartX;
-                                var dy = touchEndY - touchStartY;
-
-                                if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) {
-                                    var wrap = document.getElementById('infe-wrapper');
-                                    if (wrap) {
-                                        if (dx < 0) {
-                                            if (wrap.scrollLeft + wrap.clientWidth >= wrap.scrollWidth - 10) { Android.nextChapter(); } 
-                                            else { wrap.scrollLeft += wrap.clientWidth; }
-                                        } else {
-                                            if (wrap.scrollLeft <= 10) { Android.prevChapter(); } 
-                                            else { wrap.scrollLeft -= wrap.clientWidth; }
-                                        }
-                                    } else {
-                                        if (dx < 0) { Android.nextChapter(); } else { Android.prevChapter(); }
-                                    }
-                                }
-                            }, {passive: true});
-                            
                             var lastTapTime = 0;
                             document.addEventListener('click', function(e) {
                                 var isLink = e.target.tagName === 'A' || (e.target.closest && e.target.closest('a'));
                                 var isBtn = e.target.id === 'epub-next-btn' || (e.target.closest && e.target.closest('#epub-next-btn'));
                                 if (!isLink && !isBtn) {
-                                    var width = window.innerWidth;
-                                    var height = window.innerHeight;
-                                    
-                                    if (e.clientX < width * 0.15) { 
-                                        var wrap = document.getElementById('infe-wrapper');
-                                        if (wrap && wrap.scrollLeft > 10) { wrap.scrollLeft -= wrap.clientWidth; }
-                                        else { Android.prevChapter(); }
-                                    } 
-                                    else if (e.clientX > width * 0.85) { 
-                                        var wrap = document.getElementById('infe-wrapper');
-                                        if (wrap && wrap.scrollLeft + wrap.clientWidth < wrap.scrollWidth - 10) { wrap.scrollLeft += wrap.clientWidth; }
-                                        else { Android.nextChapter(); }
-                                    } 
-                                    else {
-                                        var currentTime = new Date().getTime();
-                                        if (currentTime - lastTapTime < 300) { Android.onTap(); lastTapTime = 0; } 
-                                        else { lastTapTime = currentTime; }
-                                    }
+                                    var currentTime = new Date().getTime();
+                                    if (currentTime - lastTapTime < 300) { Android.onTap(); lastTapTime = 0; } 
+                                    else { lastTapTime = currentTime; }
                                 }
                             });
+                            
+                            var initialX = null;
+                            var initialY = null;
+                            document.addEventListener('touchstart', function(e) {
+                                initialX = e.touches[0].clientX;
+                                initialY = e.touches[0].clientY;
+                            }, {passive: true});
+                            
+                            document.addEventListener('touchend', function(e) {
+                                if (initialX === null || initialY === null) return;
+                                var currentX = e.changedTouches[0].clientX;
+                                var currentY = e.changedTouches[0].clientY;
+                                var diffX = initialX - currentX;
+                                var diffY = initialY - currentY;
+                                
+                                if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > 50) {
+                                    if (diffX > 0) Android.nextChapter();
+                                    else Android.prevChapter();
+                                }
+                                initialX = null;
+                                initialY = null;
+                            }, {passive: true});
                             
                             // Prevent native Android context menu
                             document.addEventListener('contextmenu', function(e) {
@@ -2059,6 +1978,13 @@ fun EPUBReader(
                                 this.settings.allowFileAccessFromFileURLs = true
                                 this.settings.allowUniversalAccessFromFileURLs = true
                                 
+                                if (epubBook?.isFixedLayout == true) {
+                                    this.settings.useWideViewPort = true
+                                    this.settings.loadWithOverviewMode = true
+                                    this.settings.builtInZoomControls = true
+                                    this.settings.displayZoomControls = false
+                                }
+                                
                                 this.isVerticalScrollBarEnabled = false
                                 this.isHorizontalScrollBarEnabled = false
                                 
@@ -2130,6 +2056,12 @@ fun EPUBReader(
                             }
                         },
                         update = { webView ->
+                            val isFixedLayoutLocal = epubBook!!.isFixedLayout
+                            webView.settings.useWideViewPort = isFixedLayoutLocal
+                            webView.settings.loadWithOverviewMode = isFixedLayoutLocal
+                            webView.settings.builtInZoomControls = isFixedLayoutLocal
+                            webView.settings.displayZoomControls = false
+
                             webView.tag = Pair(annotationsJson, targetScrollAnnId)
                             val currentUrl = webView.url
                             if (currentUrl != htmlUrl) {

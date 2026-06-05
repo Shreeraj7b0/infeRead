@@ -185,7 +185,7 @@ fun HomeScreen(
     var deepSearchResults by remember { mutableStateOf<List<Any>>(emptyList()) }
     var isSearching by remember { mutableStateOf(false) }
 
-    LaunchedEffect(searchQuery, libraryFiles, checklists) {
+    LaunchedEffect(searchQuery, libraryFiles, checklists, bookshelves) {
         if (searchQuery.isBlank()) {
             deepSearchResults = emptyList()
             isSearching = false
@@ -201,6 +201,7 @@ fun HomeScreen(
         })
         
         results.addAll(checklists.filter { it.name.contains(searchQuery, true) })
+        results.addAll(bookshelves.filter { it.name.contains(searchQuery, true) })
         
         for (checklist in checklists) {
             val items = viewModel.getChecklistItems(checklist.id).first()
@@ -1372,18 +1373,11 @@ fun HomeScreen(
                             }
                         }
                     }
-                } else {
-                    androidx.compose.foundation.pager.HorizontalPager(
-                        state = pagerState,
-                        modifier = Modifier.fillMaxSize(),
-                        beyondBoundsPageCount = 1
-                    ) { page ->
-                        if (page == 0) {
-                            LazyColumn(
+                        } else if (searchQuery.isNotBlank()) {
+                    LazyColumn(
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(vertical = 16.dp)
                     ) {
-                        if (searchQuery.isNotBlank()) {
                             if (isSearching) {
                                 item { Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) { Text("Searching...", color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f)) } }
                             } else if (deepSearchResults.isEmpty()) {
@@ -1394,6 +1388,7 @@ fun HomeScreen(
                                         is LibraryFile -> "search_file_${result.id}"
                                         is Checklist -> "search_checklist_${result.id}"
                                         is ChecklistItemMatch -> "search_item_${result.item.id}"
+                                        is com.infer.inferead.data.Bookshelf -> "search_bookshelf_${result.id}"
                                         else -> result.hashCode()
                                     }
                                 }) { result ->
@@ -1417,6 +1412,20 @@ fun HomeScreen(
                                                     Icon(Icons.Default.List, contentDescription = null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(24.dp))
                                                     Spacer(Modifier.width(12.dp))
                                                     Text(result.name, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onBackground, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                                }
+                                            }
+                                            is com.infer.inferead.data.Bookshelf -> {
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth().height(56.dp).clip(RoundedCornerShape(8.dp)).clickable { 
+                                                        searchQuery = ""
+                                                        focusManager.clearFocus()
+                                                        scope.launch { pagerState.animateScrollToPage(1) }
+                                                    }.padding(horizontal = 12.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Icon(Icons.Default.CollectionsBookmark, contentDescription = null, tint = MaterialTheme.colorScheme.tertiary, modifier = Modifier.size(24.dp))
+                                                    Spacer(Modifier.width(12.dp))
+                                                    Text("Bookshelf: ${result.name}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onBackground, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                                 }
                                             }
                                             is ChecklistItemMatch -> {
@@ -1454,7 +1463,18 @@ fun HomeScreen(
                                     }
                                 }
                             }
-                        } else {
+                    }
+                } else {
+                    androidx.compose.foundation.pager.HorizontalPager(
+                        state = pagerState,
+                        modifier = Modifier.fillMaxSize(),
+                        beyondBoundsPageCount = 1
+                    ) { page ->
+                        if (page == 0) {
+                            LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(vertical = 16.dp)
+                    ) {
                             items(sectionOrder, key = { it }) { sectionName ->
                             val index = sectionOrder.indexOf(sectionName)
                             val isDraggingThis = draggedSectionIndex == index
@@ -1860,7 +1880,6 @@ fun HomeScreen(
                                 }
                             }
                         }
-                        } // End of else block for search query
 
                         item {
                             ReadingGoalWidget(viewModel, onNavigateToStats)

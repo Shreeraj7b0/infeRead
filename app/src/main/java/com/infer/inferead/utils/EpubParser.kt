@@ -121,15 +121,27 @@ object EpubParser {
             }
             
             var coverImagePath = coverImageId?.let { itemMap[it] }?.let {
-                File(opfDir, it).absolutePath
+                try {
+                    File(opfDir, java.net.URLDecoder.decode(it, "UTF-8")).absolutePath
+                } catch (e: Exception) {
+                    File(opfDir, it).absolutePath
+                }
             }
             
             if (coverImagePath == null) {
                 val fallbackHref = itemMap.values.firstOrNull { it.endsWith(".jpg", true) || it.endsWith(".jpeg", true) || it.endsWith(".png", true) }
                 if (fallbackHref != null) {
-                    val fallbackFile = File(opfDir, fallbackHref)
-                    if (fallbackFile.exists()) {
-                        coverImagePath = fallbackFile.absolutePath
+                    try {
+                        val decodedFallback = java.net.URLDecoder.decode(fallbackHref, "UTF-8")
+                        val fallbackFile = File(opfDir, decodedFallback)
+                        if (fallbackFile.exists()) {
+                            coverImagePath = fallbackFile.absolutePath
+                        }
+                    } catch (e: Exception) {
+                        val fallbackFile = File(opfDir, fallbackHref)
+                        if (fallbackFile.exists()) {
+                            coverImagePath = fallbackFile.absolutePath
+                        }
                     }
                 }
             }
@@ -146,7 +158,13 @@ object EpubParser {
                 val idref = itemref.getAttribute("idref")
                 val href = itemMap[idref]
                 if (href != null) {
-                    spineFiles.add(File(opfDir, href).absolutePath)
+                    val cleanHref = href.substringBefore("#")
+                    try {
+                        val decodedHref = java.net.URLDecoder.decode(cleanHref, "UTF-8")
+                        spineFiles.add(File(opfDir, decodedHref).absolutePath)
+                    } catch (e: Exception) {
+                        spineFiles.add(File(opfDir, cleanHref).absolutePath)
+                    }
                 }
             }
             
@@ -168,7 +186,8 @@ object EpubParser {
                 }
             }
             
-            return EpubBook(title, coverImagePath, spineFiles, opfDir.absolutePath, isFixedLayout, isArchiveOrg)
+            val rawEpubBook = EpubBook(title, coverImagePath, spineFiles, opfDir.absolutePath, isFixedLayout, isArchiveOrg)
+            return EpubSanitizer.sanitizeAndSplit(rawEpubBook, opfDoc)
             
         } catch (e: Exception) {
             e.printStackTrace()

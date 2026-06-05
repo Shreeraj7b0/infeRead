@@ -45,7 +45,11 @@ data class ReaderSettings(
     val isHorizontalScroll: Boolean = false,
     val isNoir: Boolean = false,
     val isNegative: Boolean = false,
-    val vignetteStrength: Float = 0f
+    val vignetteStrength: Float = 0f,
+    val topBarButtons: Set<String> = setOf("Highlight", "Comment", "Search Annotations"),
+    val customFontColor: String? = null,
+    val readingBrightness: Float = -1f,
+    val justifyText: Boolean = false
 )
 
 class ReaderViewModel(application: Application) : AndroidViewModel(application) {
@@ -150,7 +154,11 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
             isHorizontalScroll = prefs.getBoolean("isHorizontalScroll$g", false),
             isNoir = prefs.getBoolean("isNoir$g", false),
             isNegative = prefs.getBoolean("isNegative$g", false),
-            vignetteStrength = prefs.getFloat("vignetteStrength$g", 0f)
+            vignetteStrength = prefs.getFloat("vignetteStrength$g", 0f),
+            topBarButtons = prefs.getStringSet("topBarButtons$g", setOf("Highlight", "Comment", "Search Annotations")) ?: setOf("Highlight", "Comment", "Search Annotations"),
+            customFontColor = prefs.getString("customFontColor$g", null),
+            readingBrightness = prefs.getFloat("readingBrightness$g", -1f),
+            justifyText = prefs.getBoolean("justifyText$g", false)
         )
     }
 
@@ -171,6 +179,10 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
             putBoolean("isNoir$g", s.isNoir)
             putBoolean("isNegative$g", s.isNegative)
             putFloat("vignetteStrength$g", s.vignetteStrength)
+            putStringSet("topBarButtons$g", s.topBarButtons)
+            if (s.customFontColor != null) putString("customFontColor$g", s.customFontColor) else remove("customFontColor$g")
+            putFloat("readingBrightness$g", s.readingBrightness)
+            putBoolean("justifyText$g", s.justifyText)
             apply()
         }
     }
@@ -233,6 +245,26 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
 
     fun setHorizontalScroll(isHorizontal: Boolean) {
         _settings.value = _settings.value.copy(isHorizontalScroll = isHorizontal)
+        saveSettings()
+    }
+
+    fun setTopBarButtons(buttons: Set<String>) {
+        _settings.value = _settings.value.copy(topBarButtons = buttons)
+        saveSettings()
+    }
+
+    fun setCustomFontColor(colorHex: String?) {
+        _settings.value = _settings.value.copy(customFontColor = colorHex)
+        saveSettings()
+    }
+
+    fun setReadingBrightness(brightness: Float) {
+        _settings.value = _settings.value.copy(readingBrightness = brightness)
+        saveSettings()
+    }
+
+    fun setJustifyText(justify: Boolean) {
+        _settings.value = _settings.value.copy(justifyText = justify)
         saveSettings()
     }
 
