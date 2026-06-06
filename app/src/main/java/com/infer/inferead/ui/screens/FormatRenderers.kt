@@ -355,10 +355,9 @@ fun PdfViewer(
         
         LaunchedEffect(searchJumpIndex) {
             searchJumpIndex?.let { res ->
-                res.pageNumber?.let { pageIdx ->
-                    if (pageIdx != pagerState.currentPage && pageIdx in 0 until pdfRenderer.pageCount) {
-                        pagerState.scrollToPage(pageIdx)
-                    }
+                val pageIdx = res.chapterIndex
+                if (pageIdx != pagerState.currentPage && pageIdx in 0 until pdfRenderer.pageCount) {
+                    pagerState.scrollToPage(pageIdx)
                 }
             }
         }
@@ -410,7 +409,7 @@ fun PdfViewer(
                             .drawWithContent {
                                 drawContent()
                                 if (searchResults != null) {
-                                    val pageResults = searchResults.filter { it.pageNumber == page }
+                                    val pageResults = searchResults.filter { it.chapterIndex == page }
                                     if (pageResults.isNotEmpty()) {
                                         val pageDim = pageDimensCache[page]
                                         if (pageDim != null) {
@@ -507,10 +506,9 @@ fun PdfViewer(
         
         LaunchedEffect(searchJumpIndex) {
             searchJumpIndex?.let { res ->
-                res.pageNumber?.let { pageIdx ->
-                    if (pageIdx != listState.firstVisibleItemIndex && pageIdx in 0 until pdfRenderer.pageCount) {
-                        listState.scrollToItem(pageIdx)
-                    }
+                val pageIdx = res.chapterIndex
+                if (pageIdx != listState.firstVisibleItemIndex && pageIdx in 0 until pdfRenderer.pageCount) {
+                    listState.scrollToItem(pageIdx)
                 }
             }
         }
@@ -548,7 +546,7 @@ fun PdfViewer(
                                 .drawWithContent {
                                     drawContent()
                                     if (searchResults != null) {
-                                        val pageResults = searchResults.filter { it.pageNumber == index }
+                                        val pageResults = searchResults.filter { it.chapterIndex == index }
                                         if (pageResults.isNotEmpty()) {
                                             val pageDim = pageDimensCache[index]
                                             if (pageDim != null) {
@@ -874,7 +872,10 @@ fun TXTReader(
                         var startX = 0;
                         var scrollStartX = 0;
                         var lastTapTime = 0;
+                        var isTouching = false;
+                        var isAnimating = false;
                         window.addEventListener('touchstart', function(e) {
+                            isTouching = true;
                             startX = e.touches[0].clientX;
                             scrollStartX = window.scrollX;
                         }, { passive: true });
@@ -884,6 +885,7 @@ fun TXTReader(
                             e.preventDefault();
                         }, { passive: false });
                         window.addEventListener('touchend', function(e) {
+                            isTouching = false;
                             var currentTime = new Date().getTime();
                             if (currentTime - lastTapTime < 300) {
                                 Android.triggerTap();
@@ -902,6 +904,8 @@ fun TXTReader(
                         }, { passive: true });
 
                         function scrollToPage(pageIndex) {
+                            if (isAnimating) return;
+                            isAnimating = true;
                             var targetX = pageIndex * window.innerWidth;
                             var startX = window.scrollX;
                             var distance = targetX - startX;
@@ -920,6 +924,7 @@ fun TXTReader(
                                 if (progress < 1) {
                                     window.requestAnimationFrame(step);
                                 } else {
+                                    isAnimating = false;
                                     Android.reportCurrentPage(pageIndex + 1);
                                 }
                             }
@@ -993,7 +998,13 @@ fun TXTReader(
                 )
                 
                 androidx.compose.runtime.LaunchedEffect(chapterIndex) {
-                    webViewRef?.evaluateJavascript("scrollToPage(${chapterIndex - 1});", null)
+                    webViewRef?.evaluateJavascript(
+                        """
+                        if (!isTouching && !isAnimating && Math.round(window.scrollX / window.innerWidth) !== ${chapterIndex - 1}) {
+                            window.scrollTo(${chapterIndex - 1} * window.innerWidth, 0);
+                        }
+                        """.trimIndent(), null
+                    )
                 }
 
                 androidx.compose.runtime.LaunchedEffect(searchJumpIndex) {
@@ -1001,7 +1012,36 @@ fun TXTReader(
                         if (searchQuery.isNotEmpty()) {
                             webViewRef?.evaluateJavascript(
                                 """
-                                window.find('${searchQuery.replace("'", "\\'")}', false, false, true, false, false, false);
+                                if (!document.getElementById('search-style')) {
+                                    var style = document.createElement('style');
+                                    style.id = 'search-style';
+                                    style.innerHTML = '::selection { background: rgba(255, 152, 0, 0.6); color: inherit; }';
+                                    document.head.appendChild(style);
+                                }
+                                if (window.lastQuery !== '${searchQuery.replace("'", "\\'")}') {
+                                    window.lastQuery = '${searchQuery.replace("'", "\\'")}';
+                                    var bodyHtml = document.body.innerHTML.replace(/<mark[^>]*>|<\/mark>/gi, '');
+                                    var escapedQuery = window.lastQuery.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\${'$'}&');
+                                    var regex = new RegExp('(' + escapedQuery + ')', 'gi');
+                                    document.body.innerHTML = bodyHtml.replace(regex, '<mark style="background: rgba(255, 255, 0, 0.4); color: inherit; border-radius: 2px;">${'$'}1</mark>');
+                                    // Reset selection to start
+                                    window.getSelection().removeAllRanges();
+                                    
+                                    // Find N times to reach the current index since we reset the DOM
+                                    for (var i = 0; i <= ${res.matchIndex}; i++) {
+                                        window.find(window.lastQuery, false, false, true, false, false, false);
+                                    }
+                                } else {
+                                    window.find('${searchQuery.replace("'", "\\'")}', false, false, true, false, false, false);
+                                }
+                                var sel = window.getSelection();
+                                if (sel.rangeCount > 0) {
+                                    var rect = sel.getRangeAt(0).getBoundingClientRect();
+                                    var absoluteLeft = rect.left + window.scrollX;
+                                    var page = Math.floor(absoluteLeft / window.innerWidth);
+                                    window.scrollTo(page * window.innerWidth, 0);
+                                    Android.reportCurrentPage(page + 1);
+                                }
                                 """.trimIndent(), null
                             )
                         }
@@ -1895,11 +1935,74 @@ fun EPUBReader(
                 if (res.chapterIndex == chapterIndex - 1 && webViewRef != null) {
                     val queryText = viewModel.searchQuery.value.replace("\"", "\\\"").replace("\n", " ")
                     val jsSearchCode = """
-                        window.getSelection().removeAllRanges();
-                        document.body.scrollIntoView();
-                        for (var i = 0; i <= ${res.matchIndex}; i++) {
-                            window.find("$queryText", false, false, true, false, true, false);
+                        document.querySelectorAll('.search-match').forEach(function(el) {
+                            var parent = el.parentNode;
+                            while (el.firstChild) parent.insertBefore(el.firstChild, el);
+                            parent.removeChild(el);
+                            parent.normalize();
+                        });
+                        document.querySelectorAll('span[style*="yellow"], span[style*="ff9800"], span[style*="rgb(255, 152, 0)"]').forEach(function(el) {
+                            var parent = el.parentNode;
+                            while(el.firstChild) parent.insertBefore(el.firstChild, el);
+                            parent.removeChild(el);
+                            parent.normalize();
+                        });
+                        
+                        var resetCursor = function() {
+                            var sel = window.getSelection();
+                            sel.removeAllRanges();
+                            var range = document.createRange();
+                            range.selectNodeContents(document.body);
+                            range.collapse(true);
+                            sel.addRange(range);
+                        };
+                        resetCursor();
+                        
+                        while (window.find("$queryText", false, false, false, false, true, false)) {
+                            var sel = window.getSelection();
+                            if (sel.rangeCount > 0) {
+                                var range = sel.getRangeAt(0);
+                                var mark = document.createElement('mark');
+                                mark.className = 'search-match';
+                                mark.style.backgroundColor = 'rgba(255, 255, 0, 0.4)';
+                                mark.style.color = 'inherit';
+                                mark.style.borderRadius = '2px';
+                                try {
+                                    range.surroundContents(mark);
+                                } catch(e) {
+                                    document.execCommand("hiliteColor", false, "yellow");
+                                }
+                            }
                         }
+                        
+                        resetCursor();
+                        
+                        for (var i = 0; i <= ${res.matchIndex}; i++) {
+                            window.find("$queryText", false, false, false, false, true, false);
+                        }
+                        
+                        var targetNode = null;
+                        var sel = window.getSelection();
+                        if (sel.rangeCount > 0) {
+                            var range = sel.getRangeAt(0);
+                            targetNode = sel.anchorNode.parentElement;
+                            var mark = document.createElement('mark');
+                            mark.className = 'search-match';
+                            mark.style.backgroundColor = 'rgba(255, 152, 0, 0.6)';
+                            mark.style.color = 'inherit';
+                            mark.style.borderRadius = '2px';
+                            try {
+                                range.surroundContents(mark);
+                                targetNode = mark;
+                            } catch(e) {
+                                document.execCommand("hiliteColor", false, "#ff9800");
+                            }
+                        }
+                        
+                        if (targetNode) {
+                            targetNode.scrollIntoView({behavior: 'smooth', block: 'center'});
+                        }
+                        window.getSelection().removeAllRanges();
                     """.trimIndent()
                     webViewRef?.evaluateJavascript(jsSearchCode, null)
                     viewModel.clearSearchJump()
@@ -2464,11 +2567,74 @@ fun EPUBReader(
                                             if (jump != null && jump.chapterIndex == chapterIndexSafe) {
                                                 val queryText = currentQuery.replace("\"", "\\\"").replace("\n", " ")
                                                 val jsSearchCode = """
-                                                    window.getSelection().removeAllRanges();
-                                                    document.body.scrollIntoView();
-                                                    for (var i = 0; i <= ${jump.matchIndex}; i++) {
-                                                        window.find("$queryText", false, false, true, false, true, false);
+                                                    document.querySelectorAll('.search-match').forEach(function(el) {
+                                                        var parent = el.parentNode;
+                                                        while (el.firstChild) parent.insertBefore(el.firstChild, el);
+                                                        parent.removeChild(el);
+                                                        parent.normalize();
+                                                    });
+                                                    document.querySelectorAll('span[style*="yellow"], span[style*="ff9800"], span[style*="rgb(255, 152, 0)"]').forEach(function(el) {
+                                                        var parent = el.parentNode;
+                                                        while(el.firstChild) parent.insertBefore(el.firstChild, el);
+                                                        parent.removeChild(el);
+                                                        parent.normalize();
+                                                    });
+                                                    
+                                                    var resetCursor = function() {
+                                                        var sel = window.getSelection();
+                                                        sel.removeAllRanges();
+                                                        var range = document.createRange();
+                                                        range.selectNodeContents(document.body);
+                                                        range.collapse(true);
+                                                        sel.addRange(range);
+                                                    };
+                                                    resetCursor();
+                                                    
+                                                    while (window.find("$queryText", false, false, false, false, true, false)) {
+                                                        var sel = window.getSelection();
+                                                        if (sel.rangeCount > 0) {
+                                                            var range = sel.getRangeAt(0);
+                                                            var mark = document.createElement('mark');
+                                                            mark.className = 'search-match';
+                                                            mark.style.backgroundColor = 'rgba(255, 255, 0, 0.4)';
+                                                            mark.style.color = 'inherit';
+                                                            mark.style.borderRadius = '2px';
+                                                            try {
+                                                                range.surroundContents(mark);
+                                                            } catch(e) {
+                                                                document.execCommand("hiliteColor", false, "yellow");
+                                                            }
+                                                        }
                                                     }
+                                                    
+                                                    resetCursor();
+                                                    
+                                                    for (var i = 0; i <= ${jump.matchIndex}; i++) {
+                                                        window.find("$queryText", false, false, false, false, true, false);
+                                                    }
+                                                    
+                                                    var targetNode = null;
+                                                    var sel = window.getSelection();
+                                                    if (sel.rangeCount > 0) {
+                                                        var range = sel.getRangeAt(0);
+                                                        targetNode = sel.anchorNode.parentElement;
+                                                        var mark = document.createElement('mark');
+                                                        mark.className = 'search-match';
+                                                        mark.style.backgroundColor = 'rgba(255, 152, 0, 0.6)';
+                                                        mark.style.color = 'inherit';
+                                                        mark.style.borderRadius = '2px';
+                                                        try {
+                                                            range.surroundContents(mark);
+                                                            targetNode = mark;
+                                                        } catch(e) {
+                                                            document.execCommand("hiliteColor", false, "#ff9800");
+                                                        }
+                                                    }
+                                                    
+                                                    if (targetNode) {
+                                                        targetNode.scrollIntoView({behavior: 'smooth', block: 'center'});
+                                                    }
+                                                    window.getSelection().removeAllRanges();
                                                 """.trimIndent()
                                                 view?.evaluateJavascript(jsSearchCode, null)
                                                 viewModel.clearSearchJump()

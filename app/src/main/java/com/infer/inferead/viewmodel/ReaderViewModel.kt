@@ -154,9 +154,8 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                     stripper.startPage = i
                     stripper.endPage = i
                     stripper.matches.clear()
-                    stripper.getText(document) // This runs processPage and findMatches
+                    val text = stripper.getText(document) // This runs processPage and findMatches
                     
-                    val text = stripper.getFullText()
                     var matchIdx = 0
                     for (rects in stripper.matches) {
                         // Find the snippet using standard index (since stripper.matches maps 1:1)
@@ -649,13 +648,31 @@ class PDFSearchStripper(private val query: String) : com.tom_roush.pdfbox.text.P
     }
 
     private fun findMatches() {
-        val fullText = currentText.toString()
-        var idx = fullText.indexOf(query, ignoreCase = true)
+        val builder = java.lang.StringBuilder()
+        val indexMap = mutableListOf<Int>()
+        for (i in currentPositions.indices) {
+            val unicode = currentPositions[i].unicode
+            if (unicode != null) {
+                for (char in unicode) {
+                    if (char.isLetterOrDigit()) {
+                        builder.append(char)
+                        indexMap.add(i)
+                    }
+                }
+            }
+        }
+        val searchableText = builder.toString()
+        val searchableQuery = query.filter { it.isLetterOrDigit() }
+        if (searchableQuery.isEmpty()) return
+
+        var idx = searchableText.indexOf(searchableQuery, ignoreCase = true)
         while (idx >= 0) {
             val rects = mutableListOf<android.graphics.RectF>()
-            val endIdx = minOf(idx + query.length, currentPositions.size)
-            for (i in idx until endIdx) {
-                if (i < currentPositions.size) {
+            val endIdx = minOf(idx + searchableQuery.length, indexMap.size) - 1
+            if (idx < indexMap.size && endIdx >= 0 && endIdx < indexMap.size) {
+                val startPosIdx = indexMap[idx]
+                val endPosIdx = indexMap[endIdx]
+                for (i in startPosIdx..endPosIdx) {
                     val pos = currentPositions[i]
                     val x = pos.xDirAdj
                     val y = pos.yDirAdj - pos.heightDir
@@ -663,13 +680,11 @@ class PDFSearchStripper(private val query: String) : com.tom_roush.pdfbox.text.P
                     val h = pos.heightDir
                     rects.add(android.graphics.RectF(x, y, x + w, y + h))
                 }
+                if (rects.isNotEmpty()) {
+                    matches.add(rects)
+                }
             }
-            if (rects.isNotEmpty()) {
-                matches.add(rects)
-            }
-            idx = fullText.indexOf(query, idx + query.length, ignoreCase = true)
+            idx = searchableText.indexOf(searchableQuery, idx + searchableQuery.length, ignoreCase = true)
         }
     }
-    
-    fun getFullText(): String = currentText.toString()
 }
