@@ -11,7 +11,22 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import java.util.Calendar
+
+data class SearchResult(
+    val snippet: String,
+    val chapterIndex: Int,
+    val matchIndex: Int = 0, // Used to disambiguate multiple matches in the same chapter
+    val pageNumber: Int? = null, // For paginated formats like PDF
+    val rects: List<android.graphics.RectF>? = null, // Bounding boxes for highlighting
+    val textIndex: Int? = null // For text-based formats
+)
 
 fun getFileGroup(format: String?, filePath: String?): String {
     val fmt = format?.uppercase() ?: filePath?.substringAfterLast('.')?.uppercase() ?: ""
@@ -94,6 +109,103 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     fun triggerPageComment() {
         _pageCommentTrigger.value += 1
     }
+
+    private val _searchQuery = MutableStateFlow("")
+    val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
+
+    private val _searchResults = MutableStateFlow<List<SearchResult>>(emptyList())
+    val searchResults: StateFlow<List<SearchResult>> = _searchResults.asStateFlow()
+
+    private val _searchJumpIndex = MutableStateFlow<SearchResult?>(null)
+    val searchJumpIndex: StateFlow<SearchResult?> = _searchJumpIndex.asStateFlow()
+
+    private var searchJob: kotlinx.coroutines.Job? = null
+
+    fun setSearchQuery(query: String) { 
+        _searchQuery.value = query 
+        val file = _currentFile.value ?: return
+        val formatGroup = getFileGroup(file.format, file.filePath)
+        if (formatGroup == "epub") return // EPUB search is handled in FormatRenderers.kt
+        
+        searchJob?.cancel()
+        if (query.isBlank()) {
+            _searchResults.value = emptyList()
+            return
+        }
+        
+        searchJob = viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            kotlinx.coroutines.delay(500)
+            performSearch(getApplication<Application>(), query, file)
+        }
+    }
+
+    private suspend fun performSearch(context: Context, query: String, file: LibraryFile) {
+        try {
+            val results = mutableListOf<SearchResult>()
+            val formatGroup = getFileGroup(file.format, file.filePath)
+            
+            if (formatGroup == "pdf_cbz" && file.format == "PDF") {
+                com.tom_roush.pdfbox.android.PDFBoxResourceLoader.init(context)
+                val document = com.tom_roush.pdfbox.pdmodel.PDDocument.load(java.io.File(file.filePath))
+                val stripper = PDFSearchStripper(query)
+                
+                for (i in 1..document.numberOfPages) {
+                    if (!kotlinx.coroutines.currentCoroutineContext().isActive) break
+                    stripper.startPage = i
+                    stripper.endPage = i
+                    stripper.matches.clear()
+                    stripper.getText(document) // This runs processPage and findMatches
+                    
+                    val text = stripper.getFullText()
+                    var matchIdx = 0
+                    for (rects in stripper.matches) {
+                        // Find the snippet using standard index (since stripper.matches maps 1:1)
+                        var idx = text.indexOf(query, ignoreCase = true)
+                        var currentMatch = 0
+                        while (idx >= 0 && currentMatch < matchIdx) {
+                            idx = text.indexOf(query, idx + query.length, ignoreCase = true)
+                            currentMatch++
+                        }
+                        
+                        val snippet = if (idx >= 0) {
+                            val start = maxOf(0, idx - 40)
+                            val end = minOf(text.length, idx + query.length + 40)
+                            (if(start>0)"..."else"") + text.substring(start, end).replace("\n", " ") + (if(end<text.length)"..."else"")
+                        } else "..."
+                        
+                        results.add(SearchResult(snippet, i - 1, matchIdx, i, rects))
+                        matchIdx++
+                        if (results.size >= 150) break
+                    }
+                    if (results.size >= 150) break
+                }
+                document.close()
+            } else if (formatGroup == "txt_doc" || formatGroup == "coding") {
+                val text = java.io.File(file.filePath).readText()
+                var idx = text.indexOf(query, ignoreCase = true)
+                var matchIdx = 0
+                while (idx >= 0 && results.size < 150) {
+                    if (!kotlinx.coroutines.currentCoroutineContext().isActive) break
+                    val start = maxOf(0, idx - 40)
+                    val end = minOf(text.length, idx + query.length + 40)
+                    val snippet = (if(start>0)"..."else"") + text.substring(start, end).replace("\n", " ") + (if(end<text.length)"..."else"")
+                    results.add(SearchResult(snippet, 0, matchIdx, null, null, idx)) // matchIndex is used for highlighting
+                    matchIdx++
+                    idx = text.indexOf(query, idx + query.length, ignoreCase = true)
+                }
+            }
+            
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                _searchResults.value = results
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    fun setSearchResults(results: List<SearchResult>) { _searchResults.value = results }
+    fun triggerSearchJump(result: SearchResult) { _searchJumpIndex.value = result }
+    fun clearSearchJump() { _searchJumpIndex.value = null }
 
     private var sessionStartTime: Long = 0
     private var currentDayOfYear: Int = Calendar.getInstance().get(Calendar.DAY_OF_YEAR)
@@ -236,6 +348,13 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     fun setNegative(isNegative: Boolean) {
         _settings.value = _settings.value.copy(isNegative = isNegative, isNoir = false)
         saveSettings()
+    }
+    
+    fun markFinished(fileId: Int, isFinished: Boolean) {
+        viewModelScope.launch {
+            val finishedAt = if (isFinished) System.currentTimeMillis() else 0L
+            dao.markFinished(fileId, isFinished, finishedAt)
+        }
     }
 
     fun setVignetteStrength(strength: Float) {
@@ -509,4 +628,48 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
             dao.updateAnnotation(annotation.copy(colorHex = newColor))
         }
     }
+}
+
+class PDFSearchStripper(private val query: String) : com.tom_roush.pdfbox.text.PDFTextStripper() {
+    val matches = mutableListOf<List<android.graphics.RectF>>()
+    private val currentText = java.lang.StringBuilder()
+    private val currentPositions = mutableListOf<com.tom_roush.pdfbox.text.TextPosition>()
+
+    override fun writeString(text: String, textPositions: List<com.tom_roush.pdfbox.text.TextPosition>) {
+        currentText.append(text)
+        currentPositions.addAll(textPositions)
+        super.writeString(text, textPositions)
+    }
+
+    override fun processPage(page: com.tom_roush.pdfbox.pdmodel.PDPage?) {
+        currentText.clear()
+        currentPositions.clear()
+        super.processPage(page)
+        findMatches()
+    }
+
+    private fun findMatches() {
+        val fullText = currentText.toString()
+        var idx = fullText.indexOf(query, ignoreCase = true)
+        while (idx >= 0) {
+            val rects = mutableListOf<android.graphics.RectF>()
+            val endIdx = minOf(idx + query.length, currentPositions.size)
+            for (i in idx until endIdx) {
+                if (i < currentPositions.size) {
+                    val pos = currentPositions[i]
+                    val x = pos.xDirAdj
+                    val y = pos.yDirAdj - pos.heightDir
+                    val w = pos.widthDirAdj
+                    val h = pos.heightDir
+                    rects.add(android.graphics.RectF(x, y, x + w, y + h))
+                }
+            }
+            if (rects.isNotEmpty()) {
+                matches.add(rects)
+            }
+            idx = fullText.indexOf(query, idx + query.length, ignoreCase = true)
+        }
+    }
+    
+    fun getFullText(): String = currentText.toString()
 }

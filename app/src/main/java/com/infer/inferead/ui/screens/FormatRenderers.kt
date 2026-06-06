@@ -22,6 +22,9 @@ import android.os.ParcelFileDescriptor
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateCentroid
@@ -230,7 +233,9 @@ fun PdfViewer(
     onTotalPages: (Int) -> Unit = {},
     onTap: () -> Unit = {},
     targetVerticalProgress: Float? = null,
-    onScrollProgress: (Float) -> Unit = {}
+    onScrollProgress: (Float) -> Unit = {},
+    searchResults: List<com.infer.inferead.viewmodel.SearchResult>? = null,
+    searchJumpIndex: com.infer.inferead.viewmodel.SearchResult? = null
 ) {
     val file = File(filePath)
     if (!file.exists()) {
@@ -253,6 +258,7 @@ fun PdfViewer(
 
     val mutex = remember { Mutex() }
     val bitmapCache = remember { android.util.LruCache<Int, Bitmap>(6) }
+    val pageDimensCache = remember { mutableMapOf<Int, android.util.SizeF>() }
     val scope = rememberCoroutineScope()
 
     DisposableEffect(Unit) {
@@ -305,6 +311,7 @@ fun PdfViewer(
                 var page: PdfRenderer.Page? = null
                 try {
                     page = pdfRenderer.openPage(index)
+                    pageDimensCache[index] = android.util.SizeF(page.width.toFloat(), page.height.toFloat())
                     var renderWidth = (page.width * density * 1.5f)
                     var renderHeight = (page.height * density * 1.5f)
                     val maxDim = 2048f
@@ -343,6 +350,16 @@ fun PdfViewer(
             if (target != internalPage && target in 0 until pdfRenderer.pageCount) {
                 internalPage = target
                 pagerState.scrollToPage(target)
+            }
+        }
+        
+        LaunchedEffect(searchJumpIndex) {
+            searchJumpIndex?.let { res ->
+                res.pageNumber?.let { pageIdx ->
+                    if (pageIdx != pagerState.currentPage && pageIdx in 0 until pdfRenderer.pageCount) {
+                        pagerState.scrollToPage(pageIdx)
+                    }
+                }
             }
         }
 
@@ -389,6 +406,45 @@ fun PdfViewer(
                             .graphicsLayer {
                                 scaleX = scale; scaleY = scale
                                 translationX = offset.x; translationY = offset.y
+                            }
+                            .drawWithContent {
+                                drawContent()
+                                if (searchResults != null) {
+                                    val pageResults = searchResults.filter { it.pageNumber == page }
+                                    if (pageResults.isNotEmpty()) {
+                                        val pageDim = pageDimensCache[page]
+                                        if (pageDim != null) {
+                                            val imgAspect = bitmap!!.width.toFloat() / bitmap!!.height.toFloat()
+                                            val layoutAspect = size.width / size.height
+                                            var drawWidth = size.width
+                                            var drawHeight = size.height
+                                            var startX = 0f
+                                            var startY = 0f
+                                            if (imgAspect > layoutAspect) {
+                                                drawHeight = size.width / imgAspect
+                                                startY = (size.height - drawHeight) / 2f
+                                            } else {
+                                                drawWidth = size.height * imgAspect
+                                                startX = (size.width - drawWidth) / 2f
+                                            }
+                                            
+                                            val scaleXHighlight = drawWidth / pageDim.width
+                                            val scaleYHighlight = drawHeight / pageDim.height
+                                            
+                                            for (res in pageResults) {
+                                                res.rects?.forEach { r ->
+                                                    val isJumped = searchJumpIndex?.matchIndex == res.matchIndex && searchJumpIndex.pageNumber == res.pageNumber
+                                                    val color = if (isJumped) androidx.compose.ui.graphics.Color(0x80FF9800) else androidx.compose.ui.graphics.Color(0x60FFFF00)
+                                                    drawRect(
+                                                        color = color,
+                                                        topLeft = androidx.compose.ui.geometry.Offset(startX + r.left * scaleXHighlight, startY + r.top * scaleYHighlight),
+                                                        size = androidx.compose.ui.geometry.Size(r.width() * scaleXHighlight, r.height() * scaleYHighlight)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                             },
                         contentScale = ContentScale.Fit,
                         colorFilter = cf
@@ -448,6 +504,16 @@ fun PdfViewer(
                 listState.scrollToItem(currentPage - 1)
             }
         }
+        
+        LaunchedEffect(searchJumpIndex) {
+            searchJumpIndex?.let { res ->
+                res.pageNumber?.let { pageIdx ->
+                    if (pageIdx != listState.firstVisibleItemIndex && pageIdx in 0 until pdfRenderer.pageCount) {
+                        listState.scrollToItem(pageIdx)
+                    }
+                }
+            }
+        }
 
         Box(modifier = Modifier.fillMaxSize()) {
             LazyColumn(
@@ -478,6 +544,45 @@ fun PdfViewer(
                                 .graphicsLayer {
                                     scaleX = scale; scaleY = scale
                                     translationX = offset.x; translationY = offset.y
+                                }
+                                .drawWithContent {
+                                    drawContent()
+                                    if (searchResults != null) {
+                                        val pageResults = searchResults.filter { it.pageNumber == index }
+                                        if (pageResults.isNotEmpty()) {
+                                            val pageDim = pageDimensCache[index]
+                                            if (pageDim != null) {
+                                                val imgAspect = bitmap!!.width.toFloat() / bitmap!!.height.toFloat()
+                                                val layoutAspect = size.width / size.height
+                                                var drawWidth = size.width
+                                                var drawHeight = size.height
+                                                var startX = 0f
+                                                var startY = 0f
+                                                if (imgAspect > layoutAspect) {
+                                                    drawHeight = size.width / imgAspect
+                                                    startY = (size.height - drawHeight) / 2f
+                                                } else {
+                                                    drawWidth = size.height * imgAspect
+                                                    startX = (size.width - drawWidth) / 2f
+                                                }
+                                                
+                                                val scaleXHighlight = drawWidth / pageDim.width
+                                                val scaleYHighlight = drawHeight / pageDim.height
+                                                
+                                                for (res in pageResults) {
+                                                    res.rects?.forEach { r ->
+                                                        val isJumped = searchJumpIndex?.matchIndex == res.matchIndex && searchJumpIndex.pageNumber == res.pageNumber
+                                                        val color = if (isJumped) androidx.compose.ui.graphics.Color(0x80FF9800) else androidx.compose.ui.graphics.Color(0x60FFFF00)
+                                                        drawRect(
+                                                            color = color,
+                                                            topLeft = androidx.compose.ui.geometry.Offset(startX + r.left * scaleXHighlight, startY + r.top * scaleYHighlight),
+                                                            size = androidx.compose.ui.geometry.Size(r.width() * scaleXHighlight, r.height() * scaleYHighlight)
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                                 .zoomable { newScale, newOffset, zoomed ->
                                     scale = newScale
@@ -593,7 +698,10 @@ fun TXTReader(
     onTextSelectionCleared: () -> Unit = {},
     onAnnotationClicked: (Int, Float, Float) -> Unit = { _, _, _ -> },
     targetVerticalProgress: Float? = null,
-    onScrollProgress: (Float) -> Unit = {}
+    onScrollProgress: (Float) -> Unit = {},
+    searchResults: List<com.infer.inferead.viewmodel.SearchResult>? = null,
+    searchJumpIndex: com.infer.inferead.viewmodel.SearchResult? = null,
+    searchQuery: String = ""
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var loadedText by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
@@ -673,12 +781,19 @@ fun TXTReader(
             com.infer.inferead.viewmodel.ContrastMode.EInk -> androidx.compose.ui.graphics.Color(0xFFF0F0F0)
             com.infer.inferead.viewmodel.ContrastMode.Normal -> if (settings.isWarmFilterActive) androidx.compose.ui.graphics.Color(0xFFF4ECD8) else androidx.compose.ui.graphics.Color(0xFFF5F5F5)
         }
-        val textColor = when (settings.contrastMode) {
-            com.infer.inferead.viewmodel.ContrastMode.Dark -> androidx.compose.ui.graphics.Color.White
+        val baseTextColor = when (settings.contrastMode) {
+            com.infer.inferead.viewmodel.ContrastMode.Dark -> androidx.compose.ui.graphics.Color(0xFFE0E0E0)
             com.infer.inferead.viewmodel.ContrastMode.HighContrastDark -> androidx.compose.ui.graphics.Color.White
-            com.infer.inferead.viewmodel.ContrastMode.HighContrastLight, com.infer.inferead.viewmodel.ContrastMode.EInk -> androidx.compose.ui.graphics.Color.Black
-            com.infer.inferead.viewmodel.ContrastMode.Normal -> androidx.compose.ui.graphics.Color.Black
+            com.infer.inferead.viewmodel.ContrastMode.HighContrastLight -> androidx.compose.ui.graphics.Color.Black
+            com.infer.inferead.viewmodel.ContrastMode.EInk -> androidx.compose.ui.graphics.Color.Black
+            com.infer.inferead.viewmodel.ContrastMode.Normal -> if (settings.isWarmFilterActive) androidx.compose.ui.graphics.Color(0xFF5C4033) else if (androidx.compose.foundation.isSystemInDarkTheme()) androidx.compose.ui.graphics.Color(0xFF1C1C1E) else androidx.compose.ui.graphics.Color(0xFF1C1C1E)
         }
+        val textColor = if (settings.customFontColor != null) {
+            try {
+                val colStr = if (settings.customFontColor!!.startsWith("#")) settings.customFontColor else "#${settings.customFontColor}"
+                androidx.compose.ui.graphics.Color(android.graphics.Color.parseColor(colStr))
+            } catch (e: Exception) { baseTextColor }
+        } else baseTextColor
         val tintColor = if (settings.isWarmFilterActive && settings.contrastMode == com.infer.inferead.viewmodel.ContrastMode.Normal) androidx.compose.ui.graphics.Color(0xFFF4ECD8) else bgColor
         
         val fontFamily = when (settings.fontFamily) {
@@ -740,6 +855,7 @@ fun TXTReader(
                             font-weight: ${if (settings.fontBold) "bold" else "normal"};
                             line-height: ${1.6f * settings.lineSpacingMultiplier};
                             letter-spacing: ${(settings.wordSpacingMultiplier - 1.0f) * 0.1f}em;
+                            ${if (settings.justifyText) "text-align: justify;" else ""}
                             word-wrap: break-word;
                             white-space: pre-wrap;
                         }
@@ -879,6 +995,18 @@ fun TXTReader(
                 androidx.compose.runtime.LaunchedEffect(chapterIndex) {
                     webViewRef?.evaluateJavascript("scrollToPage(${chapterIndex - 1});", null)
                 }
+
+                androidx.compose.runtime.LaunchedEffect(searchJumpIndex) {
+                    searchJumpIndex?.let { res ->
+                        if (searchQuery.isNotEmpty()) {
+                            webViewRef?.evaluateJavascript(
+                                """
+                                window.find('${searchQuery.replace("'", "\\'")}', false, false, true, false, false, false);
+                                """.trimIndent(), null
+                            )
+                        }
+                    }
+                }
             } else {
                 androidx.compose.runtime.LaunchedEffect(settings.isHorizontalScroll, loadedText) {
                     if (!settings.isHorizontalScroll && loadedText != null) {
@@ -899,6 +1027,40 @@ fun TXTReader(
                     }
                 }
                 
+                var textLayoutResult by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<androidx.compose.ui.text.TextLayoutResult?>(null) }
+                
+                androidx.compose.runtime.LaunchedEffect(searchJumpIndex, textLayoutResult) {
+                    val res = searchJumpIndex
+                    val layout = textLayoutResult
+                    if (res != null && layout != null && res.textIndex != null) {
+                        try {
+                            val line = layout.getLineForOffset(res.textIndex)
+                            val y = layout.getLineTop(line)
+                            // Scroll to match with a small offset for padding
+                            textScrollState.animateScrollTo(maxOf(0, y.toInt() - 100))
+                        } catch (e: Exception) {}
+                    }
+                }
+                
+                val annotatedText = androidx.compose.runtime.remember(loadedText, searchQuery, searchJumpIndex, textColor) {
+                    if (loadedText == null) return@remember androidx.compose.ui.text.AnnotatedString("")
+                    if (searchQuery.isBlank()) return@remember androidx.compose.ui.text.AnnotatedString(loadedText!!)
+                    
+                    val builder = androidx.compose.ui.text.AnnotatedString.Builder(loadedText!!)
+                    var idx = loadedText!!.indexOf(searchQuery, ignoreCase = true)
+                    while (idx >= 0) {
+                        val isJumped = searchJumpIndex?.textIndex == idx
+                        val color = if (isJumped) androidx.compose.ui.graphics.Color(0x80FF9800) else androidx.compose.ui.graphics.Color(0x60FFFF00)
+                        builder.addStyle(
+                            style = androidx.compose.ui.text.SpanStyle(background = color),
+                            start = idx,
+                            end = idx + searchQuery.length
+                        )
+                        idx = loadedText!!.indexOf(searchQuery, idx + searchQuery.length, ignoreCase = true)
+                    }
+                    builder.toAnnotatedString()
+                }
+                
                 androidx.compose.foundation.layout.Box(
                     modifier = androidx.compose.ui.Modifier.fillMaxSize()
                         .pointerInput(Unit) {
@@ -908,14 +1070,15 @@ fun TXTReader(
                         .padding(start = 16.dp, top = 16.dp, bottom = 16.dp, end = 26.dp)
                 ) {
                     androidx.compose.material3.Text(
-                        text = loadedText!!,
+                        text = annotatedText,
                         color = textColor,
                         fontSize = (16 * settings.fontSizeMultiplier).sp,
                         fontFamily = fontFamily,
                         fontWeight = if (settings.fontBold) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal,
                         lineHeight = (16 * settings.fontSizeMultiplier * 1.6f * settings.lineSpacingMultiplier).sp,
                         letterSpacing = ((settings.wordSpacingMultiplier - 1.0f) * 0.1f).em,
-                        modifier = androidx.compose.ui.Modifier.padding(top = 60.dp, bottom = 60.dp)
+                        modifier = androidx.compose.ui.Modifier.padding(top = 60.dp, bottom = 60.dp),
+                        onTextLayout = { textLayoutResult = it }
                     )
                 }
             }
@@ -1464,12 +1627,14 @@ fun EPUBReader(
     targetScrollAnnId: Int? = null,
     targetVerticalProgress: Float? = null,
     onScrollProgress: (Float) -> Unit = {},
-    onAnnotationPositions: (List<Pair<Int, Float>>) -> Unit = {}
+    onAnnotationPositions: (List<Pair<Int, Float>>) -> Unit = {},
+    viewModel: com.infer.inferead.viewmodel.ReaderViewModel? = null
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var epubBook by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<com.infer.inferead.utils.EpubBook?>(null) }
     var isLoading by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(true) }
     var errorMessage by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
+    var webViewRef by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<android.webkit.WebView?>(null) }
 
     androidx.compose.runtime.LaunchedEffect(filePath) {
         isLoading = true
@@ -1501,12 +1666,173 @@ fun EPUBReader(
             if (parsed != null && parsed.spineFiles.isNotEmpty()) {
                 epubBook = parsed
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    val previews = parsed.spineFiles.map { htmlFile ->
-                        val htmlContent = java.io.File(htmlFile).readText()
-                        val bodyStart = htmlContent.indexOf("<body", ignoreCase = true)
-                        val bodyStr = if (bodyStart != -1) htmlContent.substring(bodyStart) else htmlContent
-                        val text = bodyStr.replace(Regex("<[^>]*>"), " ").replace(Regex("\\s+"), " ").trim()
-                        text.take(150)
+                    // Build TOC title map from the EPUB's NCX or nav file
+                    val tocTitles = mutableMapOf<String, String>()
+                    try {
+                        val opfDir = java.io.File(parsed.opfDir)
+                        // Re-parse the OPF to find the TOC file
+                        val containerFile = java.io.File(extractDir, "META-INF/container.xml")
+                        if (containerFile.exists()) {
+                            val factory = javax.xml.parsers.DocumentBuilderFactory.newInstance()
+                            factory.isNamespaceAware = false
+                            val builder = factory.newDocumentBuilder()
+                            val containerDoc = builder.parse(containerFile)
+                            val rootfiles = containerDoc.getElementsByTagName("rootfile")
+                            if (rootfiles.length > 0) {
+                                val opfPath = (rootfiles.item(0) as org.w3c.dom.Element).getAttribute("full-path")
+                                val opfFile = java.io.File(extractDir, opfPath)
+                                if (opfFile.exists()) {
+                                    val opfDoc = builder.parse(opfFile)
+                                    val manifest = opfDoc.getElementsByTagName("manifest")
+                                    if (manifest.length > 0) {
+                                        val items = (manifest.item(0) as org.w3c.dom.Element).getElementsByTagName("item")
+                                        var tocFile: java.io.File? = null
+                                        for (i in 0 until items.length) {
+                                            val item = items.item(i) as org.w3c.dom.Element
+                                            val id = item.getAttribute("id")
+                                            val href = item.getAttribute("href")
+                                            val properties = item.getAttribute("properties")
+                                            val mediaType = item.getAttribute("media-type")
+                                            if (id == "ncx" || id == "toc" || properties.contains("nav") || mediaType == "application/x-dtbncx+xml") {
+                                                val decodedHref = try { java.net.URLDecoder.decode(href, "UTF-8") } catch (e: Exception) { href }
+                                                val f = java.io.File(opfDir, decodedHref)
+                                                if (f.exists()) { tocFile = f; break }
+                                            }
+                                        }
+                                        if (tocFile != null) {
+                                            if (tocFile.name.endsWith(".ncx")) {
+                                                val tocDoc = builder.parse(tocFile)
+                                                val navPoints = tocDoc.getElementsByTagName("navPoint")
+                                                for (i in 0 until navPoints.length) {
+                                                    val navPoint = navPoints.item(i) as org.w3c.dom.Element
+                                                    val textNodes = navPoint.getElementsByTagName("text")
+                                                    val contentNodes = navPoint.getElementsByTagName("content")
+                                                    if (textNodes.length > 0 && contentNodes.length > 0) {
+                                                        val label = textNodes.item(0).textContent.trim()
+                                                        val src = (contentNodes.item(0) as org.w3c.dom.Element).getAttribute("src").substringBefore("#")
+                                                        val decodedSrc = try { java.net.URLDecoder.decode(src, "UTF-8") } catch (e: Exception) { src }
+                                                        val resolvedPath = java.io.File(tocFile.parentFile, decodedSrc).canonicalPath
+                                                        if (label.isNotBlank() && !tocTitles.containsKey(resolvedPath)) {
+                                                            tocTitles[resolvedPath] = label
+                                                        }
+                                                    }
+                                                }
+                                            } else {
+                                                // nav.xhtml
+                                                val doc = org.jsoup.Jsoup.parse(tocFile, "UTF-8")
+                                                val links = doc.select("a[href]")
+                                                for (link in links) {
+                                                    val href = link.attr("href").substringBefore("#")
+                                                    val decodedHref = try { java.net.URLDecoder.decode(href, "UTF-8") } catch (e: Exception) { href }
+                                                    val resolvedPath = java.io.File(tocFile.parentFile, decodedHref).canonicalPath
+                                                    val label = link.text().trim()
+                                                    if (label.isNotBlank() && !tocTitles.containsKey(resolvedPath)) {
+                                                        tocTitles[resolvedPath] = label
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } catch (e: Exception) { /* TOC parsing failed, fall back to heuristics */ }
+
+                    var chapterCounter = 1
+                    val filePartCounters = mutableMapOf<String, Int>()
+                    val previews = parsed.spineFiles.mapIndexed { index, htmlFile ->
+                        val file = java.io.File(htmlFile)
+                        // Try canonical path match against TOC first
+                        val canonicalPath = try { file.canonicalPath } catch (e: Exception) { file.absolutePath }
+                        // Also try matching against the original (pre-sanitized) filename
+                        val originalName = file.name
+                            .removePrefix("sanitized_")
+                            .replace(Regex("^part\\d+_"), "")
+                        val originalFile = java.io.File(file.parentFile, originalName)
+                        val originalCanonical = try { originalFile.canonicalPath } catch (e: Exception) { originalFile.absolutePath }
+                        
+                        val isSplitFile = file.name.startsWith("sanitized_part")
+                        val tocLabelBase = tocTitles[canonicalPath] ?: tocTitles[originalCanonical]
+                        
+                        val tocLabel = if (isSplitFile && tocLabelBase != null) {
+                            val partIndex = filePartCounters.getOrDefault(originalCanonical, 0) + 1
+                            filePartCounters[originalCanonical] = partIndex
+                            if (partIndex > 1 || filePartCounters.keys.contains(originalCanonical)) {
+                                "$tocLabelBase (Part $partIndex)"
+                            } else {
+                                tocLabelBase
+                            }
+                        } else {
+                            tocLabelBase
+                        }
+                        
+                        if (tocLabel != null) {
+                            tocLabel
+                        } else {
+                            // Fall back to HTML content heuristics
+                            try {
+                                val htmlContent = file.readText()
+                                val doc = org.jsoup.Jsoup.parse(htmlContent)
+                                val bodyText = doc.body()?.text()?.trim() ?: ""
+                                val hasImages = doc.select("img, image, svg").isNotEmpty()
+                                
+                                // Check for title tag
+                                val titleTag = doc.title().trim()
+                                
+                                // Check for heading elements
+                                val heading = doc.select("h1, h2, h3, h4, h5, h6").firstOrNull()?.text()?.trim()
+                                
+                                // Intelligent identification
+                                val lowerBody = bodyText.lowercase()
+                                val lowerTitle = titleTag.lowercase()
+                                
+                                when {
+                                    // Cover page detection
+                                    (index == 0 && hasImages && bodyText.length < 100) -> "Cover"
+                                    (lowerTitle.contains("cover") || lowerBody.startsWith("cover")) && bodyText.length < 200 -> "Cover"
+                                    
+                                    // Front matter detection
+                                    lowerTitle.contains("title page") || (heading != null && heading.lowercase().contains("title page")) -> "Title Page"
+                                    lowerTitle.contains("copyright") || (heading != null && heading.lowercase().contains("copyright")) || lowerBody.startsWith("copyright") -> "Copyright"
+                                    lowerTitle.contains("dedication") || (heading != null && heading.lowercase().contains("dedication")) -> "Dedication"
+                                    lowerTitle.contains("epigraph") || (heading != null && heading.lowercase().contains("epigraph")) -> "Epigraph"
+                                    lowerTitle.contains("acknowledgment") || lowerTitle.contains("acknowledgement") || (heading != null && (heading.lowercase().contains("acknowledgment") || heading.lowercase().contains("acknowledgement"))) -> "Acknowledgements"
+                                    
+                                    // Table of Contents
+                                    lowerTitle.contains("table of contents") || lowerTitle.contains("contents") || (heading != null && (heading.lowercase() == "contents" || heading.lowercase() == "table of contents")) -> "Table of Contents"
+                                    
+                                    // Preface / Foreword / Introduction
+                                    lowerTitle.contains("preface") || (heading != null && heading.lowercase().contains("preface")) -> "Preface"
+                                    lowerTitle.contains("foreword") || (heading != null && heading.lowercase().contains("foreword")) -> "Foreword"
+                                    lowerTitle.contains("introduction") || (heading != null && heading.lowercase().contains("introduction")) -> "Introduction"
+                                    lowerTitle.contains("prologue") || (heading != null && heading.lowercase().contains("prologue")) -> "Prologue"
+                                    
+                                    // Back matter
+                                    lowerTitle.contains("epilogue") || (heading != null && heading.lowercase().contains("epilogue")) -> "Epilogue"
+                                    lowerTitle.contains("afterword") || (heading != null && heading.lowercase().contains("afterword")) -> "Afterword"
+                                    lowerTitle.contains("glossary") || (heading != null && heading.lowercase().contains("glossary")) -> "Glossary"
+                                    lowerTitle.contains("bibliography") || (heading != null && heading.lowercase().contains("bibliography")) -> "Bibliography"
+                                    lowerTitle.contains("index") || (heading != null && heading.lowercase() == "index") -> "Index"
+                                    lowerTitle.contains("appendix") || (heading != null && heading.lowercase().contains("appendix")) -> "Appendix"
+                                    lowerTitle.contains("about the author") || (heading != null && heading.lowercase().contains("about the author")) -> "About the Author"
+                                    
+                                    // Use heading if available
+                                    !heading.isNullOrBlank() -> heading
+                                    
+                                    // Use title tag if meaningful (not just the book title repeated)
+                                    titleTag.isNotBlank() && titleTag.length < 80 -> titleTag
+                                    
+                                    // Empty or image-only pages
+                                    bodyText.length < 20 && hasImages -> "Illustration"
+                                    bodyText.isBlank() -> "Page ${index + 1}"
+                                    
+                                    // Fallback: numbered chapter
+                                    else -> "Chapter ${chapterCounter++}"
+                                }
+                            } catch (e: Exception) {
+                                "Chapter ${chapterCounter++}"
+                            }
+                        }
                     }
                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                         onTotalPagesLoaded(parsed.spineFiles.size, previews)
@@ -1517,6 +1843,69 @@ fun EPUBReader(
             }
         }
         isLoading = false
+    }
+
+    if (viewModel != null) {
+        val searchQuery by viewModel.searchQuery.collectAsState()
+        androidx.compose.runtime.LaunchedEffect(searchQuery, epubBook) {
+            if (searchQuery.isNotBlank() && epubBook != null) {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    val results = mutableListOf<com.infer.inferead.viewmodel.SearchResult>()
+                    epubBook!!.spineFiles.forEachIndexed { index, path ->
+                        try {
+                            val file = java.io.File(path)
+                            if (file.exists()) {
+                                val text = org.jsoup.Jsoup.parse(file, "UTF-8").text()
+                                var idx = text.indexOf(searchQuery, ignoreCase = true)
+                                var matchIdx = 0
+                                while (idx >= 0 && results.size < 100) {
+                                    val start = maxOf(0, idx - 40)
+                                    val end = minOf(text.length, idx + searchQuery.length + 40)
+                                    val prefix = if (start > 0) "..." else ""
+                                    val suffix = if (end < text.length) "..." else ""
+                                    val snippet = prefix + text.substring(start, end).replace("\n", " ") + suffix
+                                    results.add(com.infer.inferead.viewmodel.SearchResult(snippet, index, matchIdx, null))
+                                    matchIdx++
+                                    idx = text.indexOf(searchQuery, idx + searchQuery.length, ignoreCase = true)
+                                }
+                            }
+                        } catch (e: Exception) {}
+                    }
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        viewModel.setSearchResults(results)
+                    }
+                }
+            } else if (searchQuery.isBlank()) {
+                viewModel.setSearchResults(emptyList())
+            }
+        }
+
+        val searchJump by viewModel.searchJumpIndex.collectAsState()
+        androidx.compose.runtime.LaunchedEffect(searchJump) {
+            searchJump?.let { res ->
+                if (res.chapterIndex != chapterIndex - 1) {
+                    onPageChanged(res.chapterIndex + 1)
+                }
+            }
+        }
+        
+        // If the chapter is already loaded and we just jumped within it
+        androidx.compose.runtime.LaunchedEffect(searchJump, webViewRef) {
+            searchJump?.let { res ->
+                if (res.chapterIndex == chapterIndex - 1 && webViewRef != null) {
+                    val queryText = viewModel.searchQuery.value.replace("\"", "\\\"").replace("\n", " ")
+                    val jsSearchCode = """
+                        window.getSelection().removeAllRanges();
+                        document.body.scrollIntoView();
+                        for (var i = 0; i <= ${res.matchIndex}; i++) {
+                            window.find("$queryText", false, false, true, false, true, false);
+                        }
+                    """.trimIndent()
+                    webViewRef?.evaluateJavascript(jsSearchCode, null)
+                    viewModel.clearSearchJump()
+                }
+            }
+        }
     }
 
     if (isLoading) {
@@ -1541,11 +1930,16 @@ fun EPUBReader(
                     com.infer.inferead.viewmodel.ContrastMode.EInk -> "#F0F0F0"
                     com.infer.inferead.viewmodel.ContrastMode.Normal -> if (settings.isWarmFilterActive) "#F4ECD8" else "#F5F5F5"
                 }
-                val textColor = when (settings.contrastMode) {
+                val textColorBase = when (settings.contrastMode) {
                     com.infer.inferead.viewmodel.ContrastMode.Dark -> "#E0E0E0"
                     com.infer.inferead.viewmodel.ContrastMode.HighContrastDark -> "#FFFFFF"
                     com.infer.inferead.viewmodel.ContrastMode.HighContrastLight, com.infer.inferead.viewmodel.ContrastMode.EInk -> "#000000"
                     com.infer.inferead.viewmodel.ContrastMode.Normal -> if (settings.isWarmFilterActive) "#5C4033" else "#1C1C1E"
+                }
+                val textColor = if (settings.customFontColor != null) {
+                    if (settings.customFontColor!!.startsWith("#")) settings.customFontColor else "#${settings.customFontColor}"
+                } else {
+                    textColorBase
                 }
                 val tintColor = if (settings.isWarmFilterActive && settings.contrastMode == com.infer.inferead.viewmodel.ContrastMode.Normal) "#F4ECD8" else bgColor
                 val actualBg = tintColor
@@ -1566,7 +1960,7 @@ fun EPUBReader(
                 val isFixedLayout = epubBook!!.isFixedLayout
                 val isArchiveOrg = epubBook!!.isArchiveOrg
                 
-                val js = androidx.compose.runtime.remember(settings.contrastMode, settings.fontFamily, settings.fontSizeMultiplier, settings.fontBold, settings.lineSpacingMultiplier, settings.wordSpacingMultiplier, isHorizontal, isFixedLayout, isArchiveOrg) {
+                val js = androidx.compose.runtime.remember(settings.contrastMode, settings.fontFamily, settings.fontSizeMultiplier, settings.fontBold, settings.lineSpacingMultiplier, settings.wordSpacingMultiplier, isHorizontal, isFixedLayout, isArchiveOrg, textColor, settings.justifyText) {
                     val fontFaces = """
                         @font-face {
                             font-family: 'Google Sans';
@@ -1659,12 +2053,14 @@ fun EPUBReader(
                                         background-color: transparent !important;
                                         line-height: ${1.6f * settings.lineSpacingMultiplier} !important;
                                         letter-spacing: ${(settings.wordSpacingMultiplier - 1.0f) * 0.1f}em !important;
+                                        ${if (settings.justifyText) "text-align: justify !important; text-justify: inter-word !important;" else "text-align: start !important;"}
                                         $boldRule
                                     }
                                     p, div, span:not(.inferead-annotation), a, li, blockquote, h1, h2, h3, h4, h5, h6 {
                                         color: $textColor !important;
                                         ${if (fontFamily != "Original") "font-family: $fontFamily, sans-serif !important;" else ""}
                                         background-color: transparent !important;
+                                        ${if (settings.justifyText) "text-align: justify !important; text-justify: inter-word !important;" else "text-align: start !important;"}
                                         $boldRule
                                         $positionOverride
                                     }
@@ -1744,7 +2140,19 @@ fun EPUBReader(
                                 initialY = e.touches[0].clientY;
                             }, {passive: true});
                             
+                            var lastTouchTime = 0;
                             document.addEventListener('touchend', function(e) {
+                                if (e.touches.length === 0) {
+                                    var currentTime = new Date().getTime();
+                                    if (currentTime - lastTouchTime < 300) {
+                                        e.preventDefault();
+                                        Android.onTap();
+                                        lastTouchTime = 0;
+                                    } else {
+                                        lastTouchTime = currentTime;
+                                    }
+                                }
+
                                 if (initialX === null || initialY === null) return;
                                 var currentX = e.changedTouches[0].clientX;
                                 var currentY = e.changedTouches[0].clientY;
@@ -1757,7 +2165,7 @@ fun EPUBReader(
                                 }
                                 initialX = null;
                                 initialY = null;
-                            }, {passive: true});
+                            }, {passive: false});
                             
                             // Prevent native Android context menu
                             document.addEventListener('contextmenu', function(e) {
@@ -1963,7 +2371,6 @@ fun EPUBReader(
                 var isScrolled by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
                 var scrollJob by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<kotlinx.coroutines.Job?>(null) }
                 val viewCoroutineScope = androidx.compose.runtime.rememberCoroutineScope()
-                var webViewRef by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<android.webkit.WebView?>(null) }
                 androidx.compose.foundation.layout.Box(
                     modifier = androidx.compose.ui.Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color(android.graphics.Color.parseColor(actualBg)))
                 ) {
@@ -2049,6 +2456,23 @@ fun EPUBReader(
                                         view?.evaluateJavascript("if(window.renderAnnotations) { window.renderAnnotations('${anns.replace("'", "\\'")}'); setTimeout(function(){ reportPositions(); }, 500); }", null)
                                         if (targetId != null) {
                                             view?.evaluateJavascript("javascript:scrollToAnnotation($targetId);", null)
+                                        }
+                                        
+                                        if (viewModel != null) {
+                                            val jump = viewModel.searchJumpIndex.value
+                                            val currentQuery = viewModel.searchQuery.value
+                                            if (jump != null && jump.chapterIndex == chapterIndexSafe) {
+                                                val queryText = currentQuery.replace("\"", "\\\"").replace("\n", " ")
+                                                val jsSearchCode = """
+                                                    window.getSelection().removeAllRanges();
+                                                    document.body.scrollIntoView();
+                                                    for (var i = 0; i <= ${jump.matchIndex}; i++) {
+                                                        window.find("$queryText", false, false, true, false, true, false);
+                                                    }
+                                                """.trimIndent()
+                                                view?.evaluateJavascript(jsSearchCode, null)
+                                                viewModel.clearSearchJump()
+                                            }
                                         }
                                     }
                                 }

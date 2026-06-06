@@ -1060,6 +1060,7 @@ fun HomeScreen(
                                 )
                                 
                                 var showHeaderMenu by remember { mutableStateOf(false) }
+                                var showExportDialog by remember { mutableStateOf<String?>(null) }
                                 Box {
                                     IconButton(onClick = { showHeaderMenu = true }) {
                                         Icon(Icons.Default.MoreVert, contentDescription = "More options")
@@ -1069,17 +1070,17 @@ fun HomeScreen(
                                         onDismissRequest = { showHeaderMenu = false }
                                     ) {
                                         DropdownMenuItem(
-                                            text = { Text("Download PDF") },
+                                            text = { Text("Download") },
                                             onClick = { 
                                                 showHeaderMenu = false
-                                                viewModel.convertChecklistToPdf(activeChecklist.id)
+                                                showExportDialog = "DOWNLOAD"
                                             }
                                         )
                                         DropdownMenuItem(
-                                            text = { Text("Share PDF") },
+                                            text = { Text("Share") },
                                             onClick = { 
                                                 showHeaderMenu = false
-                                                viewModel.shareChecklistAsPdf(activeChecklist.id)
+                                                showExportDialog = "SHARE"
                                             }
                                         )
                                         DropdownMenuItem(
@@ -1101,6 +1102,34 @@ fun HomeScreen(
                                             onClick = {
                                                 showHeaderMenu = false
                                                 viewModel.markAllChecklistItemsDone(activeChecklist.id, false)
+                                            }
+                                        )
+                                    }
+
+                                    if (showExportDialog != null) {
+                                        androidx.compose.material3.AlertDialog(
+                                            onDismissRequest = { showExportDialog = null },
+                                            title = { Text(if (showExportDialog == "DOWNLOAD") "Download Checklist" else "Share Checklist") },
+                                            text = { Text("Choose format to export:") },
+                                            confirmButton = {
+                                                TextButton(onClick = {
+                                                    if (showExportDialog == "DOWNLOAD") {
+                                                        viewModel.convertChecklistToPdf(activeChecklist.id)
+                                                    } else {
+                                                        viewModel.shareChecklistAsPdf(activeChecklist.id)
+                                                    }
+                                                    showExportDialog = null
+                                                }) { Text("PDF") }
+                                            },
+                                            dismissButton = {
+                                                TextButton(onClick = {
+                                                    if (showExportDialog == "DOWNLOAD") {
+                                                        viewModel.convertChecklistToTxt(activeChecklist.id)
+                                                    } else {
+                                                        viewModel.shareChecklistAsTxt(activeChecklist.id)
+                                                    }
+                                                    showExportDialog = null
+                                                }) { Text("TXT") }
                                             }
                                         )
                                     }

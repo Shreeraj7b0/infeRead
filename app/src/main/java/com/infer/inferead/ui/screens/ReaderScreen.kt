@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.material.icons.filled.*
+import androidx.compose.ui.text.withStyle
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.material3.*
@@ -117,6 +118,7 @@ fun ReaderScreen(
     onNavigateToSettings: () -> Unit = {},
     viewModel: ReaderViewModel = viewModel()
 ) {
+    var showFileSearch by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     val currentFile by viewModel.currentFile.collectAsState()
     val settings by viewModel.settings.collectAsState()
     val activeHighlightMode by viewModel.activeHighlightMode.collectAsState(initial = null)
@@ -242,7 +244,26 @@ fun ReaderScreen(
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     
+    val searchResults by viewModel.searchResults.collectAsState()
+    val searchJumpIndex by viewModel.searchJumpIndex.collectAsState()
+    val searchQuery by viewModel.searchQuery.collectAsState()
+
+    // State for Top/Bottom Bars visibility    
     var showSettingsSheet by remember { mutableStateOf(false) }
+    var showCustomiseTopBar by remember { mutableStateOf(false) }
+    var showHiddenMenu by remember { mutableStateOf(false) }
+    var showWordSpacingDialog by remember { mutableStateOf(false) }
+    var showLineSpacingDialog by remember { mutableStateOf(false) }
+    var showFontColorDialog by remember { mutableStateOf(false) }
+
+    val window = (context as? android.app.Activity)?.window
+    androidx.compose.runtime.LaunchedEffect(settings.readingBrightness) {
+        window?.let {
+            val lp = it.attributes
+            lp.screenBrightness = settings.readingBrightness
+            it.attributes = lp
+        }
+    }
     var chapterPreviews by remember { mutableStateOf<List<String>?>(null) }
     var targetScrollAnnId by remember { mutableStateOf<Int?>(null) }
     var showPageAnnotationManager by remember { mutableStateOf(false) }
@@ -906,7 +927,7 @@ fun ReaderScreen(
                             contentColor = if (settings.contrastMode == ContrastMode.Dark) Color(0xFF9AB0E6) else MaterialTheme.colorScheme.primary,
                             shape = CircleShape
                         ) {
-                            Icon(Icons.Default.Bookmarks, contentDescription = "Annotation Manager")
+                            Icon(Icons.Default.Create, contentDescription = "Annotation Manager")
                         }
                     }
 
@@ -1008,7 +1029,9 @@ fun ReaderScreen(
                             onTotalPages = { total -> viewModel.updateTotalPages(total) },
                             onTap = toggleReaderMode,
                             targetVerticalProgress = targetVerticalProgress,
-                            onScrollProgress = { p -> verticalScrollProgress = p }
+                            onScrollProgress = { p -> verticalScrollProgress = p },
+                            searchResults = searchResults,
+                            searchJumpIndex = searchJumpIndex
                         )
                         "TXT", "CODING" -> TXTReader(
                             filePath = file.filePath,
@@ -1021,6 +1044,9 @@ fun ReaderScreen(
                             },
                             onTap = toggleReaderMode,
                             targetVerticalProgress = targetVerticalProgress,
+                            searchResults = searchResults,
+                            searchJumpIndex = searchJumpIndex,
+                            searchQuery = searchQuery,
                             onScrollProgress = { progress ->
                                 verticalScrollProgress = progress
                                 if (!showVerticalScrubber) {
@@ -1053,6 +1079,7 @@ fun ReaderScreen(
                                 chapterPreviews = previews
                             },
                             onTap = toggleReaderMode,
+                            viewModel = viewModel,
                             onTextSelected = { text, top, bottom, cfiRange ->
                                 val finalCfi = if (file.format == "EPUB") "${file.currentPage}|$cfiRange" else cfiRange
                                 if (activeHighlightMode.isNullOrEmpty()) {
@@ -1665,12 +1692,33 @@ fun ReaderScreen(
                                             .clip(RoundedCornerShape(8.dp))
                                     )
                                 } else {
-                                    val previewText = chapterPreviews?.getOrNull(index) ?: if (currentFile!!.format == "EPUB") "Chapter ${index + 1}" else "${index + 1}"
+                                    val previewText = if (currentFile!!.format == "EPUB") {
+                                        chapterPreviews?.getOrNull(index) ?: "Chapter ${index + 1}"
+                                    } else {
+                                        "Page ${index + 1}"
+                                    }
                                     Box(
                                         modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant).clip(RoundedCornerShape(8.dp)).padding(8.dp),
                                         contentAlignment = Alignment.Center
                                     ) {
-                                        Text(previewText, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 5, overflow = TextOverflow.Ellipsis)
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                                            Text(
+                                                text = previewText,
+                                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                maxLines = 3,
+                                                overflow = TextOverflow.Ellipsis,
+                                                textAlign = TextAlign.Center
+                                            )
+                                            if (currentFile!!.format == "EPUB") {
+                                                Text(
+                                                    text = "${index + 1} / ${currentFile!!.totalPages}",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                                    modifier = Modifier.padding(top = 4.dp)
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                                 val hasBookmark = bookmarkedPages.contains(index + 1)
@@ -1837,15 +1885,35 @@ fun ReaderScreen(
                     else -> "OTHER"
                 }
 
-                Text(
-                    text = if (formatGroup == "IMAGE") "Image Settings" else "Reader Settings",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = textColor,
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                    textAlign = TextAlign.Center
-                )
-                Spacer(modifier = Modifier.height(20.dp))
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (formatGroup != "IMAGE") {
+                        IconButton(onClick = { showCustomiseTopBar = true }, modifier = Modifier.size(32.dp)) {
+                            Icon(Icons.Default.Add, contentDescription = "Customise Top Bar", tint = textColor)
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                    }
+                    Text(
+                        text = if (formatGroup == "IMAGE") "Image Settings" else "Reader Settings",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = textColor,
+                        textAlign = TextAlign.Center
+                    )
+                    if (formatGroup != "IMAGE") {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        IconButton(onClick = { showFileSearch = true; showSettingsSheet = false }, modifier = Modifier.size(32.dp)) {
+                            Icon(Icons.Default.Search, contentDescription = "Search in File", tint = textColor)
+                        }
+                    }
+                }
+                
+
+
+
 
                 if (formatGroup == "IMAGE") {
                     // Image-specific settings
@@ -1923,39 +1991,49 @@ fun ReaderScreen(
                 } else if (formatGroup == "EPUB") {
                     var showCommentOptions by remember { mutableStateOf(false) }
                     
-                    Row(
+                    @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+                    androidx.compose.foundation.layout.FlowRow(
                         modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
                         horizontalArrangement = Arrangement.SpaceEvenly,
-                        verticalAlignment = Alignment.CenterVertically
+                        maxItemsInEachRow = 5
                     ) {
-                        IconButton(onClick = { 
-                            viewModel.setActiveHighlightMode("#c25d5d")
-                            showSettingsSheet = false
-                            showCommentOptions = false 
-                        }) { Icon(Icons.Default.Highlight, contentDescription = "Highlight", tint = textColor) }
-                        IconButton(onClick = { showCommentOptions = !showCommentOptions }) { Icon(Icons.Default.Comment, contentDescription = "Comment", tint = textColor) }
-                        IconButton(onClick = { 
-                            showSettingsSheet = false
-                            viewModel.setShowAnnotationManager(true) 
-                        }) { Icon(Icons.Default.Edit, contentDescription = "Edit Annotations", tint = textColor) }
-                        
-                        var showHiddenMenu by remember { mutableStateOf(false) }
-                        Box {
-                            IconButton(onClick = { showHiddenMenu = true }) { 
-                                Icon(Icons.Default.KeyboardArrowDown, contentDescription = "More Options", tint = textColor) 
-                            }
-                            androidx.compose.material3.DropdownMenu(
-                                expanded = showHiddenMenu,
-                                onDismissRequest = { showHiddenMenu = false }
-                            ) {
-                                androidx.compose.material3.DropdownMenuItem(
-                                    text = { Text("Search File") },
-                                    onClick = { showHiddenMenu = false }
-                                )
-                                androidx.compose.material3.DropdownMenuItem(
-                                    text = { Text("Other Options") },
-                                    onClick = { showHiddenMenu = false }
-                                )
+                        val activeButtons = settings.topBarButtons.toList()
+                        if (activeButtons.isEmpty()) {
+                            Text("No buttons selected. Click + to add.", color = textColor.copy(alpha = 0.5f), modifier = Modifier.padding(16.dp))
+                        } else {
+                            activeButtons.forEach { btnName ->
+                                when (btnName) {
+                                    "Highlight" -> IconButton(onClick = { 
+                                        viewModel.setActiveHighlightMode("#c25d5d")
+                                        showSettingsSheet = false
+                                        showCommentOptions = false 
+                                    }) { Icon(Icons.Default.Highlight, contentDescription = "Highlight", tint = textColor) }
+                                    "Comment" -> IconButton(onClick = { showCommentOptions = !showCommentOptions }) { Icon(Icons.Default.Comment, contentDescription = "Comment", tint = textColor) }
+                                    "Search Annotations" -> IconButton(onClick = { 
+                                        showSettingsSheet = false
+                                        viewModel.setShowAnnotationManager(true) 
+                                    }) { Icon(Icons.Default.Create, contentDescription = "Edit Annotations", tint = textColor) }
+                                    "Search File" -> IconButton(onClick = { 
+                                        showFileSearch = true; showSettingsSheet = false 
+                                    }) { Icon(Icons.Default.Search, contentDescription = "Search File", tint = textColor) }
+                                    "More Settings" -> IconButton(onClick = { showHiddenMenu = true }) { Icon(Icons.Default.ViewColumn, contentDescription = "More Settings", tint = textColor) }
+                                    "Justify Text" -> IconButton(onClick = { viewModel.setJustifyText(!settings.justifyText) }) { Icon(Icons.Default.FormatAlignJustify, contentDescription = "Justify Text", tint = if (settings.justifyText) MaterialTheme.colorScheme.primary else textColor) }
+                                    "Word Spacing" -> IconButton(onClick = { showWordSpacingDialog = true }) { Icon(Icons.Default.SpaceBar, contentDescription = "Word Spacing", tint = textColor) }
+                                    "Line Spacing" -> IconButton(onClick = { showLineSpacingDialog = true }) { Icon(Icons.Default.FormatLineSpacing, contentDescription = "Line Spacing", tint = textColor) }
+                                    "Font Color" -> IconButton(onClick = { showFontColorDialog = true }) { Icon(Icons.Default.Palette, contentDescription = "Font Color", tint = textColor) }
+                                    "Reading Mode" -> IconButton(onClick = { viewModel.setWarmFilterActive(!settings.isWarmFilterActive) }) { Icon(Icons.Default.MenuBook, contentDescription = "Reading Mode", tint = if (settings.isWarmFilterActive) Color(0xFFCC7722) else textColor) }
+                                    "Immersive Mode" -> IconButton(onClick = { 
+                                        viewModel.setReaderModeActive(!settings.isReaderModeActive)
+                                        val activity = context as? android.app.Activity
+                                        val windowInsetsController = androidx.core.view.WindowCompat.getInsetsController(activity!!.window, activity.window.decorView)
+                                        if (!settings.isReaderModeActive) { windowInsetsController.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars()); windowInsetsController.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE } 
+                                        else { windowInsetsController.show(androidx.core.view.WindowInsetsCompat.Type.systemBars()) }
+                                    }) { Icon(imageVector = if (settings.isReaderModeActive) Icons.Default.FullscreenExit else Icons.Default.Fullscreen, contentDescription = "Immersive Mode", tint = if (settings.isReaderModeActive) MaterialTheme.colorScheme.primary else textColor) }
+                                    "Mark Finished" -> IconButton(onClick = { 
+                                        viewModel.markFinished(currentFile!!.id, true)
+                                        showSettingsSheet = false 
+                                    }) { Icon(Icons.Default.DoneAll, contentDescription = "Mark Finished", tint = textColor) }
+                                }
                             }
                         }
                     }
@@ -2015,20 +2093,18 @@ fun ReaderScreen(
                                     IconButton(onClick = { viewModel.setFontSizeMultiplier(settings.fontSizeMultiplier + 0.1f) }, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.Add, contentDescription = "+", tint = textColor) }
                                 }
                             }
-                            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                Text("Word Spacing", style = MaterialTheme.typography.labelSmall, color = textColor.copy(alpha = 0.6f))
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    IconButton(onClick = { viewModel.setWordSpacing((settings.wordSpacingMultiplier - 0.1f).coerceIn(0.5f, 3.0f)) }, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.Remove, contentDescription = "-", tint = textColor) }
-                                    Text("${(settings.wordSpacingMultiplier * 100).roundToInt()}%", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold), color = textColor, modifier = Modifier.width(48.dp), textAlign = TextAlign.Center)
-                                    IconButton(onClick = { viewModel.setWordSpacing((settings.wordSpacingMultiplier + 0.1f).coerceIn(0.5f, 3.0f)) }, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.Add, contentDescription = "+", tint = textColor) }
-                                }
-                            }
-                            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                Text("Line Spacing", style = MaterialTheme.typography.labelSmall, color = textColor.copy(alpha = 0.6f))
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    IconButton(onClick = { viewModel.setLineSpacing((settings.lineSpacingMultiplier - 0.1f).coerceIn(0.5f, 3.0f)) }, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.Remove, contentDescription = "-", tint = textColor) }
-                                    Text("${(settings.lineSpacingMultiplier * 100).roundToInt()}%", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold), color = textColor, modifier = Modifier.width(48.dp), textAlign = TextAlign.Center)
-                                    IconButton(onClick = { viewModel.setLineSpacing((settings.lineSpacingMultiplier + 0.1f).coerceIn(0.5f, 3.0f)) }, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.Add, contentDescription = "+", tint = textColor) }
+                            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.fillMaxWidth()) {
+                                Text("Reading Brightness", style = MaterialTheme.typography.labelSmall, color = textColor.copy(alpha = 0.6f))
+                                androidx.compose.material3.Slider(
+                                    value = if (settings.readingBrightness < 0) 0.5f else settings.readingBrightness,
+                                    onValueChange = { viewModel.setReadingBrightness(it) },
+                                    valueRange = 0.05f..1f,
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
+                                )
+                                if (settings.readingBrightness >= 0) {
+                                    TextButton(onClick = { viewModel.setReadingBrightness(-1f) }) {
+                                        Text("System Default", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                                    }
                                 }
                             }
                         }
@@ -2046,6 +2122,7 @@ fun ReaderScreen(
                                 else { windowInsetsController.show(androidx.core.view.WindowInsetsCompat.Type.systemBars()) }
                             }) { Icon(imageVector = if (settings.isReaderModeActive) Icons.Default.FullscreenExit else Icons.Default.Fullscreen, contentDescription = "Immersive Mode", tint = if (settings.isReaderModeActive) MaterialTheme.colorScheme.primary else textColor, modifier = Modifier.size(if (settings.isReaderModeActive) 32.dp else 24.dp)) }
                             IconButton(onClick = { viewModel.setFontBold(!settings.fontBold) }) { Text("B", fontWeight = if (settings.fontBold) FontWeight.Black else FontWeight.Normal, color = if (settings.fontBold) MaterialTheme.colorScheme.primary else textColor, fontSize = 20.sp) }
+                            IconButton(onClick = { viewModel.markFinished(currentFile!!.id, true); showSettingsSheet = false }) { Icon(Icons.Default.DoneAll, contentDescription = "Mark Finished", tint = textColor) }
                         }
                     }
                     
@@ -2134,6 +2211,26 @@ fun ReaderScreen(
                     }
 
                 } else if (formatGroup == "TXT_DOC_DOCX" || formatGroup == "CODING") {
+                    @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+                    androidx.compose.foundation.layout.FlowRow(
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        maxItemsInEachRow = 5
+                    ) {
+                        val activeButtons = settings.topBarButtons.toList().filter { it in listOf("Justify Text", "Font Color", "Word Spacing", "Line Spacing") }
+                        if (activeButtons.isEmpty()) {
+                            Text("No buttons selected. Click + to add.", color = textColor.copy(alpha = 0.5f), modifier = Modifier.padding(16.dp))
+                        } else {
+                            activeButtons.forEach { btnName ->
+                                when (btnName) {
+                                    "Justify Text" -> IconButton(onClick = { viewModel.setJustifyText(!settings.justifyText) }) { Icon(Icons.Default.FormatAlignJustify, contentDescription = "Justify Text", tint = if (settings.justifyText) MaterialTheme.colorScheme.primary else textColor) }
+                                    "Word Spacing" -> IconButton(onClick = { showWordSpacingDialog = true }) { Icon(Icons.Default.SpaceBar, contentDescription = "Word Spacing", tint = textColor) }
+                                    "Line Spacing" -> IconButton(onClick = { showLineSpacingDialog = true }) { Icon(Icons.Default.FormatLineSpacing, contentDescription = "Line Spacing", tint = textColor) }
+                                    "Font Color" -> IconButton(onClick = { showFontColorDialog = true }) { Icon(Icons.Default.Palette, contentDescription = "Font Color", tint = textColor) }
+                                }
+                            }
+                        }
+                    }
                     
                     Row(
                         modifier = Modifier.fillMaxWidth().height(230.dp).padding(bottom = 16.dp),
@@ -2170,23 +2267,21 @@ fun ReaderScreen(
                                     IconButton(onClick = { viewModel.setFontSizeMultiplier(settings.fontSizeMultiplier + 0.1f) }, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.Add, contentDescription = "+", tint = textColor) }
                                 }
                             }
-                            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                Text("Word Spacing", style = MaterialTheme.typography.labelSmall, color = textColor.copy(alpha = 0.6f))
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    IconButton(onClick = { viewModel.setWordSpacing((settings.wordSpacingMultiplier - 0.1f).coerceIn(0.5f, 3.0f)) }, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.Remove, contentDescription = "-", tint = textColor) }
-                                    Text("${(settings.wordSpacingMultiplier * 100).roundToInt()}%", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold), color = textColor, modifier = Modifier.width(48.dp), textAlign = TextAlign.Center)
-                                    IconButton(onClick = { viewModel.setWordSpacing((settings.wordSpacingMultiplier + 0.1f).coerceIn(0.5f, 3.0f)) }, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.Add, contentDescription = "+", tint = textColor) }
+                            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.fillMaxWidth()) {
+                                Text("Reading Brightness", style = MaterialTheme.typography.labelSmall, color = textColor.copy(alpha = 0.6f))
+                                androidx.compose.material3.Slider(
+                                    value = if (settings.readingBrightness < 0) 0.5f else settings.readingBrightness,
+                                    onValueChange = { viewModel.setReadingBrightness(it) },
+                                    valueRange = 0.05f..1f,
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
+                                )
+                                if (settings.readingBrightness >= 0) {
+                                    TextButton(onClick = { viewModel.setReadingBrightness(-1f) }) {
+                                        Text("System Default", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                                    }
                                 }
                             }
-                            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                Text("Line Spacing", style = MaterialTheme.typography.labelSmall, color = textColor.copy(alpha = 0.6f))
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    IconButton(onClick = { viewModel.setLineSpacing((settings.lineSpacingMultiplier - 0.1f).coerceIn(0.5f, 3.0f)) }, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.Remove, contentDescription = "-", tint = textColor) }
-                                    Text("${(settings.lineSpacingMultiplier * 100).roundToInt()}%", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold), color = textColor, modifier = Modifier.width(48.dp), textAlign = TextAlign.Center)
-                                    IconButton(onClick = { viewModel.setLineSpacing((settings.lineSpacingMultiplier + 0.1f).coerceIn(0.5f, 3.0f)) }, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.Add, contentDescription = "+", tint = textColor) }
-                                }
-                            }
-                            Spacer(modifier = Modifier.weight(1f))
+                            IconButton(onClick = { showHiddenMenu = true }) { Icon(Icons.Default.ViewColumn, contentDescription = "More Settings", tint = textColor) }
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth(0.95f)
@@ -2319,7 +2414,13 @@ fun ReaderScreen(
                         IconButton(onClick = { 
                             showSettingsSheet = false
                             viewModel.setShowAnnotationManager(true) 
-                        }) { Icon(Icons.Default.Search, contentDescription = "Search Annotations", tint = textColor) }
+                        }) { Icon(Icons.Default.Edit, contentDescription = "Edit Annotations", tint = textColor) }
+                        if (formatGroup == "PDF") {
+                            IconButton(onClick = { 
+                                showFileSearch = true
+                                showSettingsSheet = false 
+                            }) { Icon(Icons.Default.Search, contentDescription = "Search File", tint = textColor) }
+                        }
                     }
 
                     androidx.compose.material3.Divider(color = textColor.copy(alpha = 0.1f))
@@ -2441,45 +2542,365 @@ fun ReaderScreen(
             onDismiss = { showPageAnnotationManager = false }
         )
     }
-    if (showCreateChecklistDialog) {
-        var checklistName by remember { mutableStateOf("") }
-        val focusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
-        LaunchedEffect(Unit) {
-            focusRequester.requestFocus()
-        }
-        AlertDialog(
-            onDismissRequest = { showCreateChecklistDialog = false },
-            shape = RoundedCornerShape(16.dp),
-            tonalElevation = 8.dp,
-            title = { Text("Create Checklist") },
-            text = {
+
+    if (showFileSearch) {
+        var query by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
+        val focusRequester = androidx.compose.runtime.remember { androidx.compose.ui.focus.FocusRequester() }
+        val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { showFileSearch = false },
+            properties = androidx.compose.ui.window.DialogProperties(
+                usePlatformDefaultWidth = false,
+                decorFitsSystemWindows = false
+            )
+        ) {
+            androidx.compose.runtime.LaunchedEffect(Unit) {
+                kotlinx.coroutines.delay(300)
+                focusRequester.requestFocus()
+                keyboardController?.show()
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.5f))
+                    .clickable(
+                        interactionSource = androidx.compose.runtime.remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                        indication = null,
+                        onClick = { showFileSearch = false }
+                    )
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = androidx.compose.foundation.layout.WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 48.dp, start = 16.dp, end = 16.dp)
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(barColor)
+                        .clickable(
+                            interactionSource = androidx.compose.runtime.remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                            indication = null,
+                            onClick = {} // Consume clicks so they don't close the dialog
+                        )
+            ) {
                 OutlinedTextField(
-                    modifier = Modifier.focusRequester(focusRequester).fillMaxWidth(),
-                    value = checklistName,
-                    onValueChange = { checklistName = it },
-                    placeholder = { Text("Checklist Name") },
+                    value = query,
+                    onValueChange = { 
+                        query = it 
+                        viewModel.setSearchQuery(it)
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(focusRequester),
+                    placeholder = { Text("Search file...", color = textColor.copy(alpha = 0.6f)) },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search", tint = textColor) },
+                    trailingIcon = {
+                        if (query.isNotEmpty()) {
+                            IconButton(onClick = { 
+                                query = ""
+                                viewModel.setSearchQuery("")
+                                showFileSearch = false
+                            }) {
+                                Icon(Icons.Default.Clear, contentDescription = "Clear", tint = textColor)
+                            }
+                        }
+                    },
+                    colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = textColor,
+                        unfocusedTextColor = textColor,
+                        focusedBorderColor = Color.Transparent,
+                        unfocusedBorderColor = Color.Transparent,
+                        cursorColor = MaterialTheme.colorScheme.primary
+                    ),
                     singleLine = true,
-                    shape = RoundedCornerShape(12.dp)
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Search),
+                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                        onSearch = { 
+                            viewModel.setSearchQuery(query)
+                            keyboardController?.hide()
+                        }
+                    )
                 )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        if (checklistName.isNotBlank()) {
-                            homeViewModel.createChecklist(checklistName)
-                            showCreateChecklistDialog = false
+
+                if (searchResults.isNotEmpty()) {
+                    androidx.compose.material3.Divider(color = textColor.copy(alpha = 0.1f))
+                    androidx.compose.foundation.lazy.LazyColumn(
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 300.dp)
+                    ) {
+                        items(searchResults.size) { i ->
+                            val res = searchResults[i]
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        viewModel.triggerSearchJump(res)
+                                        showFileSearch = false
+                                    }
+                                    .padding(16.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    val idx = res.snippet.indexOf(query, ignoreCase = true)
+                                    if (idx >= 0) {
+                                        val before = res.snippet.substring(0, idx)
+                                        val match = res.snippet.substring(idx, idx + query.length)
+                                        val after = res.snippet.substring(idx + query.length)
+                                        androidx.compose.material3.Text(
+                                            text = androidx.compose.ui.text.buildAnnotatedString {
+                                                append(before)
+                                                withStyle(style = androidx.compose.ui.text.SpanStyle(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)) {
+                                                    append(match)
+                                                }
+                                                append(after)
+                                            },
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = textColor,
+                                            maxLines = 2,
+                                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                        )
+                                    } else {
+                                        Text(res.snippet, style = MaterialTheme.typography.bodyMedium, color = textColor, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                                    }
+                                    if (res.pageNumber != null) {
+                                        Text("Page ${res.pageNumber}", style = MaterialTheme.typography.labelSmall, color = textColor.copy(alpha = 0.5f))
+                                    } else {
+                                        Text("Chapter ${res.chapterIndex + 1}", style = MaterialTheme.typography.labelSmall, color = textColor.copy(alpha = 0.5f))
+                                    }
+                                }
+                            }
+                            if (i < searchResults.size - 1) {
+                                androidx.compose.material3.Divider(color = textColor.copy(alpha = 0.1f))
+                            }
                         }
                     }
-                ) {
-                    Text("Create")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showCreateChecklistDialog = false }) {
-                    Text("Cancel")
+                    }
                 }
             }
-        )
+        }
     }
 
+    if (showCustomiseTopBar) {
+        androidx.compose.ui.window.Dialog(onDismissRequest = { showCustomiseTopBar = false }) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(Color(0xFF1E1E1E))
+                    .padding(20.dp)
+            ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text("Select Top Bar Buttons", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.padding(bottom = 16.dp))
+                    
+                    val formatGroup = when (currentFile?.format) {
+                        "EPUB" -> "EPUB"
+                        "TXT", "DOC", "DOCX" -> "TXT_DOC_DOCX"
+                        "CODING" -> "CODING"
+                        "CBZ", "CBR", "CB7" -> "CBZ_CBR_CB7"
+                        "PDF" -> "PDF"
+                        "IMAGE" -> "IMAGE"
+                        else -> "OTHER"
+                    }
+
+                    val allButtons = if (formatGroup == "EPUB") {
+                        listOf(
+                            "Highlight", "Comment", "Search Annotations", 
+                            "Search File", "More Settings", "Justify Text", 
+                            "Word Spacing", "Line Spacing", "Font Color", 
+                            "Reading Mode", "Immersive Mode", "Mark Finished"
+                        )
+                    } else if (formatGroup == "TXT_DOC_DOCX" || formatGroup == "CODING") {
+                        listOf(
+                            "Justify Text", "Font Color", "Word Spacing", "Line Spacing"
+                        )
+                    } else {
+                        emptyList()
+                    }
+                    
+                    androidx.compose.foundation.lazy.LazyColumn(modifier = Modifier.heightIn(max = 400.dp)) {
+                        items(allButtons.size) { i ->
+                            val btnName = allButtons[i]
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable {
+                                val newSet = settings.topBarButtons.toMutableSet()
+                                if (newSet.contains(btnName)) newSet.remove(btnName) else newSet.add(btnName)
+                                viewModel.setTopBarButtons(newSet)
+                            }.padding(vertical = 12.dp)) {
+                                androidx.compose.material3.Checkbox(checked = settings.topBarButtons.contains(btnName), onCheckedChange = null)
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Text(btnName, color = Color.White, fontSize = 16.sp)
+                            }
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Button(onClick = { showCustomiseTopBar = false }, modifier = Modifier.fillMaxWidth()) { Text("Done") }
+                }
+            }
+        }
+    }
+
+    if (showHiddenMenu) {
+        androidx.compose.ui.window.Dialog(onDismissRequest = { showHiddenMenu = false }) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(Color(0xFF1A1A1A)) // Visibly darker box
+                    .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(24.dp))
+                    .padding(20.dp)
+            ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text("More Settings", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.padding(bottom = 16.dp))
+                    
+                    // Justify Text
+                    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.FormatAlignJustify, contentDescription = "Justify", tint = Color.White, modifier = Modifier.size(24.dp))
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text("Justify Text", color = Color.White, fontSize = 16.sp)
+                        }
+                        androidx.compose.material3.Switch(checked = settings.justifyText, onCheckedChange = { viewModel.setJustifyText(it) })
+                    }
+                    
+                    // Word Spacing
+                    Row(modifier = Modifier.fillMaxWidth().clickable { showWordSpacingDialog = true }.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.SpaceBar, contentDescription = "Word Spacing", tint = Color.White, modifier = Modifier.size(24.dp))
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text("Word Spacing", color = Color.White, fontSize = 16.sp)
+                        }
+                        Icon(Icons.Default.ChevronRight, contentDescription = "Edit", tint = Color.White)
+                    }
+
+                    // Line Spacing
+                    Row(modifier = Modifier.fillMaxWidth().clickable { showLineSpacingDialog = true }.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.FormatLineSpacing, contentDescription = "Line Spacing", tint = Color.White, modifier = Modifier.size(24.dp))
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text("Line Spacing", color = Color.White, fontSize = 16.sp)
+                        }
+                        Icon(Icons.Default.ChevronRight, contentDescription = "Edit", tint = Color.White)
+                    }
+
+                    // Font Color
+                    Row(modifier = Modifier.fillMaxWidth().clickable { showFontColorDialog = true }.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Palette, contentDescription = "Font Color", tint = Color.White, modifier = Modifier.size(24.dp))
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text("Font Color", color = Color.White, fontSize = 16.sp)
+                        }
+                        Icon(Icons.Default.ChevronRight, contentDescription = "Edit", tint = Color.White)
+                    }
+                }
+            }
+        }
+
+        if (showWordSpacingDialog) {
+            androidx.compose.ui.window.Dialog(onDismissRequest = { showWordSpacingDialog = false }) {
+                Box(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color(0xFF2A2A2A)).padding(20.dp)) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("Word Spacing", color = Color.White, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 16.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                            IconButton(onClick = { viewModel.setWordSpacing((settings.wordSpacingMultiplier - 0.1f).coerceIn(0.5f, 3.0f)) }, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.Remove, contentDescription = "-", tint = Color.White) }
+                            androidx.compose.material3.Slider(value = settings.wordSpacingMultiplier, onValueChange = { viewModel.setWordSpacing(it) }, valueRange = 0.5f..3.0f, modifier = Modifier.weight(1f))
+                            IconButton(onClick = { viewModel.setWordSpacing((settings.wordSpacingMultiplier + 0.1f).coerceIn(0.5f, 3.0f)) }, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.Add, contentDescription = "+", tint = Color.White) }
+                            Text("${(settings.wordSpacingMultiplier * 100).toInt()}%", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold), color = Color.White, modifier = Modifier.width(48.dp).clickable { viewModel.setWordSpacing(1.0f) }, textAlign = TextAlign.End)
+                        }
+                    }
+                }
+            }
+        }
+
+        if (showLineSpacingDialog) {
+            androidx.compose.ui.window.Dialog(onDismissRequest = { showLineSpacingDialog = false }) {
+                Box(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color(0xFF2A2A2A)).padding(20.dp)) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("Line Spacing", color = Color.White, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 16.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                            IconButton(onClick = { viewModel.setLineSpacing((settings.lineSpacingMultiplier - 0.1f).coerceIn(0.5f, 3.0f)) }, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.Remove, contentDescription = "-", tint = Color.White) }
+                            androidx.compose.material3.Slider(value = settings.lineSpacingMultiplier, onValueChange = { viewModel.setLineSpacing(it) }, valueRange = 0.5f..3.0f, modifier = Modifier.weight(1f))
+                            IconButton(onClick = { viewModel.setLineSpacing((settings.lineSpacingMultiplier + 0.1f).coerceIn(0.5f, 3.0f)) }, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.Add, contentDescription = "+", tint = Color.White) }
+                            Text("${(settings.lineSpacingMultiplier * 100).toInt()}%", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold), color = Color.White, modifier = Modifier.width(48.dp).clickable { viewModel.setLineSpacing(1.0f) }, textAlign = TextAlign.End)
+                        }
+                    }
+                }
+            }
+        }
+
+        if (showFontColorDialog) {
+            androidx.compose.ui.window.Dialog(onDismissRequest = { showFontColorDialog = false }) {
+                var customHexInput by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(settings.customFontColor ?: "") }
+                var r by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(255f) }
+                var g by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(255f) }
+                var b by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(255f) }
+                
+                androidx.compose.runtime.LaunchedEffect(settings.customFontColor) {
+                    if (settings.customFontColor != null) {
+                        try {
+                            val colStr = if (settings.customFontColor!!.startsWith("#")) settings.customFontColor!! else "#${settings.customFontColor}"
+                            val color = android.graphics.Color.parseColor(colStr)
+                            r = android.graphics.Color.red(color).toFloat()
+                            g = android.graphics.Color.green(color).toFloat()
+                            b = android.graphics.Color.blue(color).toFloat()
+                            customHexInput = String.format("#%02X%02X%02X", r.toInt(), g.toInt(), b.toInt())
+                        } catch (e: Exception) {}
+                    }
+                }
+
+                Box(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color(0xFF2A2A2A)).padding(20.dp)) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("Font Color", color = Color.White, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 16.dp))
+                        
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(40.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(r / 255f, g / 255f, b / 255f))
+                                .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(8.dp))
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        
+                        val updateColorFromSliders = {
+                            val hexStr = String.format("#%02X%02X%02X", r.toInt(), g.toInt(), b.toInt())
+                            customHexInput = hexStr
+                            viewModel.setCustomFontColor(hexStr)
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) { Text("R", color = Color.Red, modifier = Modifier.width(24.dp)); androidx.compose.material3.Slider(value = r, onValueChange = { r = it; updateColorFromSliders() }, valueRange = 0f..255f, modifier = Modifier.weight(1f)) }
+                        Row(verticalAlignment = Alignment.CenterVertically) { Text("G", color = Color.Green, modifier = Modifier.width(24.dp)); androidx.compose.material3.Slider(value = g, onValueChange = { g = it; updateColorFromSliders() }, valueRange = 0f..255f, modifier = Modifier.weight(1f)) }
+                        Row(verticalAlignment = Alignment.CenterVertically) { Text("B", color = Color.Blue, modifier = Modifier.width(24.dp)); androidx.compose.material3.Slider(value = b, onValueChange = { b = it; updateColorFromSliders() }, valueRange = 0f..255f, modifier = Modifier.weight(1f)) }
+                        
+                        androidx.compose.material3.OutlinedTextField(
+                            value = customHexInput,
+                            onValueChange = { 
+                                customHexInput = it
+                                try {
+                                    val colStr = if (it.startsWith("#")) it else "#$it"
+                                    if (colStr.length == 7 || colStr.length == 9) {
+                                        val color = android.graphics.Color.parseColor(colStr)
+                                        r = android.graphics.Color.red(color).toFloat()
+                                        g = android.graphics.Color.green(color).toFloat()
+                                        b = android.graphics.Color.blue(color).toFloat()
+                                        viewModel.setCustomFontColor(colStr)
+                                    }
+                                } catch (e: Exception) {}
+                            },
+                            label = { Text("Hex Color Code", color = Color.White.copy(alpha = 0.7f)) },
+                            colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = Color.White, unfocusedTextColor = Color.White
+                            ),
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                            singleLine = true
+                        )
+                        
+                        if (settings.customFontColor != null) {
+                            TextButton(onClick = { 
+                                viewModel.setCustomFontColor(null) 
+                                customHexInput = ""
+                            }, modifier = Modifier.align(Alignment.End)) { Text("Reset to Default", color = MaterialTheme.colorScheme.primary) }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

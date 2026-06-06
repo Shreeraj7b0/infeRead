@@ -531,6 +531,71 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
     }
+    fun convertChecklistToTxt(checklistId: Int) {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val checklist = dao.getAllChecklists().first().find { it.id == checklistId } ?: return@launch
+                val items = dao.getChecklistItems(checklistId).first()
+                
+                val downloadsDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
+                val infeReadDir = java.io.File(downloadsDir, "infeRead")
+                if (!infeReadDir.exists()) infeReadDir.mkdirs()
+                
+                val file = java.io.File(infeReadDir, "${checklist.name.replace(Regex("[^a-zA-Z0-9.-]"), "_")}.txt")
+                
+                file.bufferedWriter().use { writer ->
+                    writer.write("${checklist.name}\n\n")
+                    for (item in items) {
+                        val indent = "  ".repeat(item.indentLevel)
+                        val checkbox = if (item.isCompleted) "[X]" else "[ ]"
+                        writer.write("$indent$checkbox ${item.title}\n")
+                    }
+                }
+                
+                val context = getApplication<Application>()
+                launch(kotlinx.coroutines.Dispatchers.Main) {
+                    android.widget.Toast.makeText(context, "Saved to Downloads: ${file.name}", android.widget.Toast.LENGTH_LONG).show()
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    fun shareChecklistAsTxt(checklistId: Int) {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val checklist = dao.getAllChecklists().first().find { it.id == checklistId } ?: return@launch
+                val items = dao.getChecklistItems(checklistId).first()
+                val context = getApplication<Application>()
+                
+                val file = java.io.File(context.cacheDir, "${checklist.name.replace(Regex("[^a-zA-Z0-9.-]"), "_")}.txt")
+                
+                file.bufferedWriter().use { writer ->
+                    writer.write("${checklist.name}\n\n")
+                    for (item in items) {
+                        val indent = "  ".repeat(item.indentLevel)
+                        val checkbox = if (item.isCompleted) "[X]" else "[ ]"
+                        writer.write("$indent$checkbox ${item.title}\n")
+                    }
+                }
+                
+                val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+                val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(android.content.Intent.createChooser(intent, "Share Checklist").apply {
+                    addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                })
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
     fun exportFile(context: android.content.Context, file: LibraryFile, modified: Boolean) {
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {

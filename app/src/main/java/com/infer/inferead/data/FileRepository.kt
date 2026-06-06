@@ -257,7 +257,29 @@ class FileRepository(private val context: Context, private val dao: InfeReadDao)
         var autoThumbnailUri: String? = null
         val contentResolver = context.contentResolver
 
+        val internalLibDir = File(context.filesDir, "library")
+        if (!internalLibDir.exists()) internalLibDir.mkdirs()
+        
+        val extension = when(format) {
+            "PDF" -> ".pdf"
+            "EPUB" -> ".epub"
+            "TXT" -> ".txt"
+            "CODING" -> ".txt"
+            "CBZ" -> ".cbz"
+            "CBR" -> ".cbr"
+            "CB7" -> ".cb7"
+            "IMAGE" -> ".jpg"
+            else -> ""
+        }
+        val permanentFile = File(internalLibDir, "${System.currentTimeMillis()}_${file.title.replace(" ", "_")}$extension")
+
         try {
+            contentResolver.openInputStream(newUri)?.use { input ->
+                FileOutputStream(permanentFile).use { output ->
+                    input.copyTo(output)
+                }
+            }
+
             if (format == "IMAGE") {
                 val pfd = contentResolver.openFileDescriptor(newUri, "r")
                 if (pfd != null) {
@@ -279,16 +301,8 @@ class FileRepository(private val context: Context, private val dao: InfeReadDao)
                     pfd.close()
                 }
             } else if (format == "PDF" || format == "EPUB" || format == "CBZ" || format == "CBR" || format == "CB7") {
-                // Copy to temp file to extract thumbnail
-                val tempFile = File(context.cacheDir, "temp_relink_${System.currentTimeMillis()}")
-                contentResolver.openInputStream(newUri)?.use { input ->
-                    FileOutputStream(tempFile).use { output ->
-                        input.copyTo(output)
-                    }
-                }
-                
                 if (format == "PDF") {
-                    val pfd = android.os.ParcelFileDescriptor.open(tempFile, android.os.ParcelFileDescriptor.MODE_READ_ONLY)
+                    val pfd = android.os.ParcelFileDescriptor.open(permanentFile, android.os.ParcelFileDescriptor.MODE_READ_ONLY)
                     val renderer = android.graphics.pdf.PdfRenderer(pfd)
                     if (renderer.pageCount > 0) {
                         val page = renderer.openPage(0)
@@ -313,7 +327,7 @@ class FileRepository(private val context: Context, private val dao: InfeReadDao)
                     }
                 } else if (format == "EPUB") {
                     val extractDir = File(context.cacheDir, "epub_${System.currentTimeMillis()}")
-                    if (com.infer.inferead.utils.ArchiveExtractor.extractArchive(tempFile.absolutePath, extractDir, "EPUB")) {
+                    if (com.infer.inferead.utils.ArchiveExtractor.extractArchive(permanentFile.absolutePath, extractDir, "EPUB")) {
                         val epubBook = com.infer.inferead.utils.EpubParser.parseEpub(extractDir)
                         if (epubBook?.coverImagePath != null) {
                             val thumbDir = File(context.filesDir, "thumbnails")
@@ -336,7 +350,7 @@ class FileRepository(private val context: Context, private val dao: InfeReadDao)
                     }
                 } else {
                     val extractDir = File(context.cacheDir, "comic_${System.currentTimeMillis()}")
-                    if (com.infer.inferead.utils.ArchiveExtractor.extractArchive(tempFile.absolutePath, extractDir, format)) {
+                    if (com.infer.inferead.utils.ArchiveExtractor.extractArchive(permanentFile.absolutePath, extractDir, format)) {
                         val images = extractDir.walkTopDown().filter { it.isFile && (it.extension.equals("jpg", true) || it.extension.equals("jpeg", true) || it.extension.equals("png", true) || it.extension.equals("webp", true)) }.sortedBy { it.name }.toList()
                         if (images.isNotEmpty()) {
                             val coverImagePath = images.first().absolutePath
@@ -362,13 +376,12 @@ class FileRepository(private val context: Context, private val dao: InfeReadDao)
                         }
                     }
                 }
-                tempFile.delete()
             }
         } catch (e: Exception) {
             e.printStackTrace()
         }
 
-        dao.updateFilePath(fileId, newUri.toString())
+        dao.updateFilePath(fileId, permanentFile.absolutePath)
         if (autoThumbnailUri != null) {
             dao.updateThumbnail(fileId, autoThumbnailUri)
         }
