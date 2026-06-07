@@ -100,6 +100,20 @@ fun HomeScreen(
     onNavigateToStats: () -> Unit = {}
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    val prefs = remember { context.getSharedPreferences("settings_prefs", android.content.Context.MODE_PRIVATE) }
+    var isOfflineMode by remember { mutableStateOf(prefs.getBoolean("is_offline_mode", false)) }
+    
+    DisposableEffect(prefs) {
+        val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { sharedPreferences, key ->
+            if (key == "is_offline_mode") {
+                isOfflineMode = sharedPreferences.getBoolean("is_offline_mode", false)
+            }
+        }
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        onDispose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
+    
+
     val homePrefs = remember { context.getSharedPreferences("home_prefs", android.content.Context.MODE_PRIVATE) }
     val readerPrefs = remember { context.getSharedPreferences("reader_settings", android.content.Context.MODE_PRIVATE) }
     
@@ -144,6 +158,13 @@ fun HomeScreen(
     var formatSelectionDialogIsShare by remember { mutableStateOf(false) }
     var contextMenuChecklist by remember { mutableStateOf<Checklist?>(null) }
     var activeChecklistId by remember { mutableStateOf<Int?>(null) }
+    var activeNavTab by remember { mutableStateOf("library") }
+    
+    LaunchedEffect(isOfflineMode) {
+        if (isOfflineMode && activeNavTab == "online") {
+            activeNavTab = "library"
+        }
+    }
     
     LaunchedEffect(initialChecklistId) {
         if (initialChecklistId != null) {
@@ -440,17 +461,59 @@ fun HomeScreen(
                     Spacer(modifier = Modifier.height(8.dp))
                     NavigationDrawerItem(
                         label = { Text("My Library", fontWeight = FontWeight.SemiBold) },
-                        selected = activeChecklistId == null,
+                        selected = activeNavTab == "library" && activeChecklistId == null,
                         icon = { 
                             Icon(
                                 Icons.Default.AutoStories, 
                                 contentDescription = null, 
-                                tint = if (activeChecklistId == null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                tint = if (activeNavTab == "library" && activeChecklistId == null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                             ) 
                         },
                         onClick = { 
+                            activeNavTab = "library"
                             activeChecklistId = null
                             scope.launch { drawerState.close() } 
+                        },
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp).height(48.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = NavigationDrawerItemDefaults.colors(
+                            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
+                            unselectedContainerColor = Color.Transparent,
+                            selectedTextColor = MaterialTheme.colorScheme.primary,
+                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    NavigationDrawerItem(
+                        label = { Text("Online Sources", fontWeight = FontWeight.SemiBold) },
+                        selected = activeNavTab == "online",
+                        icon = { 
+                            Box {
+                                Icon(
+                                    Icons.Default.Language, 
+                                    contentDescription = null, 
+                                    tint = if (activeNavTab == "online") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                if (isOfflineMode) {
+                                    androidx.compose.foundation.Canvas(modifier = Modifier.matchParentSize()) {
+                                        drawLine(
+                                            color = Color.Red,
+                                            start = androidx.compose.ui.geometry.Offset(size.width, 0f),
+                                            end = androidx.compose.ui.geometry.Offset(0f, size.height),
+                                            strokeWidth = 3f
+                                        )
+                                    }
+                                }
+                            }
+                        },
+                        onClick = { 
+                            if (isOfflineMode) {
+                                android.widget.Toast.makeText(context, "Offline Mode Enabled, switch to Online Mode for browser functionality.", android.widget.Toast.LENGTH_SHORT).show()
+                            } else {
+                                activeNavTab = "online"
+                                activeChecklistId = null
+                                scope.launch { drawerState.close() }
+                            }
                         },
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp).height(48.dp),
                         shape = RoundedCornerShape(12.dp),
@@ -1029,7 +1092,10 @@ fun HomeScreen(
                     .background(MaterialTheme.colorScheme.background)
                     .padding(paddingValues)
             ) {
-                if (activeChecklistId != null) {
+                if (activeNavTab == "online") {
+                    val onlineViewModel: com.infer.inferead.viewmodel.OnlineStoreViewModel = viewModel()
+                    com.infer.inferead.ui.screens.OnlineStoreTab(viewModel = onlineViewModel, homeViewModel = viewModel)
+                } else if (activeChecklistId != null) {
                     val activeChecklist = checklists.find { it.id == activeChecklistId }
                     if (activeChecklist != null) {
                         val activeChecklistItems by remember(activeChecklistId) {
@@ -1950,7 +2016,7 @@ fun HomeScreen(
                     }
                 }
 
-                if (activeChecklistId == null) {
+                if (activeChecklistId == null && activeNavTab != "online") {
                     val focusRequester = remember { FocusRequester() }
                     var sortExpanded by remember { mutableStateOf(false) }
                     

@@ -60,6 +60,7 @@ fun SettingsScreen(
     var readingGoalMinutes by remember { mutableStateOf(prefs.getInt("reading_goal_minutes", 15)) }
     var showCustomGoalDialog by remember { mutableStateOf(false) }
     var showFinishedBooksDialog by remember { mutableStateOf(false) }
+    var isOfflineMode by remember { mutableStateOf(prefs.getBoolean("is_offline_mode", false)) }
 
 
     val appThemeBg by ThemeManager.currentBackground.collectAsState()
@@ -552,6 +553,34 @@ fun SettingsScreen(
                                 Text("Configure Widget Options")
                             }
                         }
+
+                        Divider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    "Offline Mode",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(
+                                    "Disable the Online Sources browser tab.",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(
+                                checked = isOfflineMode,
+                                onCheckedChange = { isChecked ->
+                                    isOfflineMode = isChecked
+                                    prefs.edit().putBoolean("is_offline_mode", isChecked).apply()
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -724,7 +753,7 @@ fun SettingsScreen(
                         modifier = Modifier.padding(top = 4.dp, bottom = 8.dp)
                     )
                     Text(
-                        "Second Edition - Version 1.1",
+                        "Second Edition - v2.0.0",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                     )

@@ -28,6 +28,17 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = FileRepository(application, dao)
     private val prefs = application.getSharedPreferences("reader_settings", android.content.Context.MODE_PRIVATE)
 
+    init {
+        viewModelScope.launch {
+            com.infer.inferead.network.AppDownloadManager.completedDownloads.collect { path ->
+                val file = java.io.File(path)
+                if (file.exists()) {
+                    repository.linkFile(path)
+                }
+            }
+        }
+    }
+
     val libraryFiles: StateFlow<List<LibraryFile>> = dao.getAllLibraryFiles()
         .stateIn(
             scope = viewModelScope,

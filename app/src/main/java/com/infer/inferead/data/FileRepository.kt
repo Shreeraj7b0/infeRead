@@ -10,6 +10,94 @@ import java.io.File
 import java.io.FileOutputStream
 
 class FileRepository(private val context: Context, private val dao: InfeReadDao) {
+    suspend fun linkFile(filePath: String): Long? = withContext(Dispatchers.IO) {
+        try {
+            val permanentFile = File(filePath)
+            if (!permanentFile.exists()) return@withContext null
+
+            val fileName = permanentFile.name
+            var format = when {
+                fileName.endsWith(".pdf", true) -> "PDF"
+                fileName.endsWith(".md", true) || fileName.endsWith(".py", true) || fileName.endsWith(".c", true) || fileName.endsWith(".java", true) || fileName.endsWith(".js", true) || fileName.endsWith(".css", true) -> "CODING"
+                fileName.endsWith(".txt", true) || fileName.endsWith(".doc", true) || fileName.endsWith(".docx", true) -> "TXT"
+                fileName.endsWith(".jpg", true) || fileName.endsWith(".jpeg", true) || fileName.endsWith(".png", true) || fileName.endsWith(".webp", true) || fileName.endsWith(".svg", true) -> "IMAGE"
+                fileName.endsWith(".epub", true) -> "EPUB"
+                fileName.endsWith(".cbz", true) || fileName.endsWith(".zip", true) -> "CBZ"
+                fileName.endsWith(".cbr", true) || fileName.endsWith(".rar", true) -> "CBR"
+                fileName.endsWith(".cb7", true) || fileName.endsWith(".7z", true) -> "CB7"
+                else -> "UNKNOWN"
+            }
+
+            var autoThumbnailUri: String? = null
+            // Thumbnail extraction logic (simplified for linking, we'll just try EPUB and PDF)
+            try {
+                if (format == "EPUB") {
+                    val extractDir = File(context.cacheDir, "epub_${System.currentTimeMillis()}")
+                    if (com.infer.inferead.utils.ArchiveExtractor.extractArchive(permanentFile.absolutePath, extractDir, "EPUB")) {
+                        val epubBook = com.infer.inferead.utils.EpubParser.parseEpub(extractDir)
+                        if (epubBook?.coverImagePath != null) {
+                            val thumbDir = File(context.filesDir, "thumbnails")
+                            if (!thumbDir.exists()) thumbDir.mkdirs()
+                            val thumbFile = File(thumbDir, "thumb_${System.currentTimeMillis()}.jpg")
+                            
+                            val options = android.graphics.BitmapFactory.Options()
+                            options.inJustDecodeBounds = true
+                            android.graphics.BitmapFactory.decodeFile(epubBook.coverImagePath, options)
+                            options.inSampleSize = calculateInSampleSize(options, 300, 400)
+                            options.inJustDecodeBounds = false
+                            val bitmap = android.graphics.BitmapFactory.decodeFile(epubBook.coverImagePath, options)
+                            if (bitmap != null) {
+                                FileOutputStream(thumbFile).use { out ->
+                                    bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 80, out)
+                                }
+                                autoThumbnailUri = thumbFile.absolutePath
+                            }
+                        }
+                    }
+                } else if (format == "PDF") {
+                    val pfd = android.os.ParcelFileDescriptor.open(permanentFile, android.os.ParcelFileDescriptor.MODE_READ_ONLY)
+                    val renderer = android.graphics.pdf.PdfRenderer(pfd)
+                    if (renderer.pageCount > 0) {
+                        val page = renderer.openPage(0)
+                        val bitmap = android.graphics.Bitmap.createBitmap(
+                            (page.width * 1.5f).toInt().coerceAtMost(800),
+                            (page.height * 1.5f).toInt().coerceAtMost(1200),
+                            android.graphics.Bitmap.Config.ARGB_8888
+                        )
+                        bitmap.eraseColor(android.graphics.Color.WHITE)
+                        page.render(bitmap, null, null, android.graphics.pdf.PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                        page.close()
+                        renderer.close()
+                        pfd.close()
+                        
+                        val thumbDir = File(context.filesDir, "thumbnails")
+                        if (!thumbDir.exists()) thumbDir.mkdirs()
+                        val thumbFile = File(thumbDir, "thumb_${System.currentTimeMillis()}.jpg")
+                        FileOutputStream(thumbFile).use { out ->
+                            bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 80, out)
+                        }
+                        autoThumbnailUri = thumbFile.absolutePath
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+
+            val libraryFile = LibraryFile(
+                title = fileName.substringBeforeLast("."),
+                filePath = permanentFile.absolutePath,
+                format = format,
+                thumbnailUri = autoThumbnailUri,
+                addedAt = System.currentTimeMillis()
+            )
+            return@withContext dao.insertLibraryFile(libraryFile)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return@withContext null
+        }
+    }
+
+
 
     suspend fun importFile(uri: Uri): Long? = withContext(Dispatchers.IO) {
         try {
