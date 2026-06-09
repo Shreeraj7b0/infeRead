@@ -64,6 +64,9 @@ interface InfeReadDao {
 
     @Query("SELECT * FROM checklist_items WHERE checklistId = :checklistId ORDER BY isPinned DESC, sortOrder ASC, id ASC")
     fun getChecklistItems(checklistId: Int): Flow<List<ChecklistItem>>
+
+    @Query("SELECT * FROM checklist_items WHERE id = :id LIMIT 1")
+    suspend fun getChecklistItemById(id: Int): ChecklistItem?
     
     @androidx.room.Update
     suspend fun updateChecklistItem(item: ChecklistItem): Int

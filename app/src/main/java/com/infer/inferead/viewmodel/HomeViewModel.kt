@@ -37,6 +37,25 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
         }
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val infeReadDir = java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), "infeRead")
+                if (infeReadDir.exists() && infeReadDir.isDirectory) {
+                    val existingFileNames = dao.getAllLibraryFiles().first().map { java.io.File(it.filePath).name }
+                    infeReadDir.listFiles()?.forEach { file ->
+                        if (file.isFile) {
+                            if (!existingFileNames.contains(file.name)) {
+                                val ext = file.extension.lowercase()
+                                val isSupported = ext in listOf("pdf", "epub", "cbz", "cbr", "cb7", "txt", "doc", "docx", "md", "py", "c", "java", "js", "css", "jpg", "jpeg", "png", "webp", "heic", "heif", "bmp", "svg")
+                                if (isSupported) {
+                                    repository.linkFile(file.absolutePath)
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) { e.printStackTrace() }
+        }
     }
 
     val libraryFiles: StateFlow<List<LibraryFile>> = dao.getAllLibraryFiles()
@@ -149,6 +168,58 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                         repository.addFileToBookshelf(targetBookshelfId, importedId)
                     }
                     _massImportProgress.value = index + 1
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                _isMassImporting.value = false
+            }
+        }
+    }
+
+    fun scanFolderForNewFiles(treeUri: Uri, context: android.content.Context, selectedExtensions: List<String>) {
+        if (_isMassImporting.value) return
+        _isMassImporting.value = true
+        _massImportProgress.value = 0
+        _isMassImportPaused.value = false
+        
+        massImportJob = viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val documentFile = androidx.documentfile.provider.DocumentFile.fromTreeUri(context, treeUri)
+                if (documentFile != null && documentFile.isDirectory) {
+                    val existingFileNames = dao.getAllLibraryFiles().first().map { java.io.File(it.filePath).name }
+                    val filesToScan = mutableListOf<androidx.documentfile.provider.DocumentFile>()
+                    
+                    fun traverse(dir: androidx.documentfile.provider.DocumentFile) {
+                        dir.listFiles().forEach { file ->
+                            if (file.isDirectory) traverse(file)
+                            else if (file.isFile && file.name != null && !existingFileNames.contains(file.name) && 
+                                    selectedExtensions.contains(file.name!!.substringAfterLast(".", "").uppercase())) {
+                                filesToScan.add(file)
+                            }
+                        }
+                    }
+                    traverse(documentFile)
+                    
+                    _massImportTotal.value = filesToScan.size
+                    for ((index, file) in filesToScan.withIndex()) {
+                        while (_isMassImportPaused.value && isActive) {
+                            delay(500)
+                        }
+                        if (!isActive) break
+                        
+                        // We need the absolute path for repository.linkFile
+                        // Content URIs can be converted to physical paths if they are from standard storage
+                        val childPathStr = file.uri.path ?: ""
+                        val physicalPath = if (childPathStr.contains("primary:")) {
+                            "/storage/emulated/0/" + childPathStr.substringAfter("primary:")
+                        } else null
+                        
+                        if (physicalPath != null) {
+                            repository.linkFile(physicalPath)
+                        }
+                        _massImportProgress.value = index + 1
+                    }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -365,8 +436,17 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun updateChecklistItem(item: ChecklistItem) {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             dao.updateChecklistItem(item)
+        }
+    }
+
+    fun updateChecklistItemIndent(id: Int, newIndentLevel: Int) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val item = dao.getChecklistItemById(id)
+            if (item != null) {
+                dao.updateChecklistItem(item.copy(indentLevel = newIndentLevel))
+            }
         }
     }
 

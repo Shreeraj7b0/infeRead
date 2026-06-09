@@ -834,7 +834,8 @@ fun ReaderScreen(
                                         isTitleExpanded = !isTitleExpanded
                                     }
                             )
-                            currentFile?.format?.let { format ->
+                            val displayFormat = java.io.File(currentFile?.filePath ?: "").extension.uppercase().takeIf { it.isNotEmpty() } ?: currentFile?.format
+                            displayFormat?.let { format ->
                                 var formatDropdownExpanded by remember { mutableStateOf(false) }
                                 Box {
                                     Surface(
@@ -873,7 +874,7 @@ fun ReaderScreen(
                                     }
                                 }
                             }
-                            val shouldShowBookmark = currentFile?.format !in listOf("TXT", "CODING") || settings.isHorizontalScroll
+                            val shouldShowBookmark = currentFile?.format != "IMAGE" && (currentFile?.format !in listOf("TXT", "CODING") || settings.isHorizontalScroll)
                             if (shouldShowBookmark) {
                                 IconButton(
                                     onClick = { viewModel.toggleBookmark() },

@@ -1371,11 +1371,11 @@ fun HomeScreen(
                                                                               accumulatedDrag += dragAmount
                                                                               if (accumulatedDrag > 80f) {
                                                                                   change.consume()
-                                                                                  viewModel.updateChecklistItem(item.copy(indentLevel = minOf(3, item.indentLevel + 1)))
+                                                                                  viewModel.updateChecklistItemIndent(item.id, minOf(3, item.indentLevel + 1))
                                                                                   accumulatedDrag = 0f
                                                                               } else if (accumulatedDrag < -80f) {
                                                                                   change.consume()
-                                                                                  viewModel.updateChecklistItem(item.copy(indentLevel = maxOf(0, item.indentLevel - 1)))
+                                                                                  viewModel.updateChecklistItemIndent(item.id, maxOf(0, item.indentLevel - 1))
                                                                                   accumulatedDrag = 0f
                                                                               }
                                                                           }

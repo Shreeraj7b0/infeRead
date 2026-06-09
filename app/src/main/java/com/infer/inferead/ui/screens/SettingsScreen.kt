@@ -163,6 +163,23 @@ fun SettingsScreen(
         }
     }
 
+    val defaultFileTypes = setOf("EPUB", "PDF", "CBZ", "CBR", "CB7", "TXT", "DOC", "DOCX", "MD", "PY", "C", "JAVA", "JS", "CSS", "JPG", "PNG", "WEBP")
+    val selectedFileTypes = remember { mutableStateListOf(*prefs.getStringSet("selected_file_types", defaultFileTypes)?.toTypedArray() ?: defaultFileTypes.toTypedArray()) }
+    var showFileTypesDialog by remember { mutableStateOf(false) }
+
+    val folderScanLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        if (uri != null) {
+            val takeFlags: Int = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            context.contentResolver.takePersistableUriPermission(uri, takeFlags)
+            
+            // Pass the selected extensions to HomeViewModel
+            viewModel.scanFolderForNewFiles(uri, context, selectedFileTypes.toList())
+        }
+    }
+
     fun updateGoal(minutes: Int) {
         readingGoalMinutes = minutes
         prefs.edit().putInt("reading_goal_minutes", minutes).apply()
@@ -519,6 +536,47 @@ fun SettingsScreen(
                                     Icon(Icons.Default.Unarchive, contentDescription = null, modifier = Modifier.size(16.dp))
                                     Spacer(Modifier.width(6.dp))
                                     Text("Import Backup")
+                                }
+                            }
+                        }
+
+                        Divider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                "File Scan", 
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                "Scan external folders and link files to your library.", 
+                                style = MaterialTheme.typography.labelSmall, 
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                OutlinedButton(
+                                    onClick = { showFileTypesDialog = true },
+                                    modifier = Modifier.weight(1f).height(56.dp),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Icon(Icons.Default.Settings, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("Files")
+                                }
+                                OutlinedButton(
+                                    onClick = { folderScanLauncher.launch(null) },
+                                    modifier = Modifier.weight(1f).height(56.dp),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Icon(Icons.Default.Folder, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("Select Folder")
                                 }
                             }
                         }
@@ -933,6 +991,62 @@ fun SettingsScreen(
                         }
                     }
                 }
+            }
+        }
+    }
+
+    if (showFileTypesDialog) {
+        androidx.compose.material3.ModalBottomSheet(
+            onDismissRequest = { showFileTypesDialog = false },
+            sheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(Icons.Default.Settings, contentDescription = null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.primary)
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text("Select File Types", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                    val allSelected = selectedFileTypes.containsAll(defaultFileTypes)
+                    TextButton(onClick = {
+                        if (allSelected) selectedFileTypes.clear() else {
+                            selectedFileTypes.clear()
+                            selectedFileTypes.addAll(defaultFileTypes)
+                        }
+                        prefs.edit().putStringSet("selected_file_types", selectedFileTypes.toSet()).apply()
+                    }) {
+                        Text(if (allSelected) "Deselect All" else "Select All")
+                    }
+                }
+                Spacer(modifier = Modifier.height(24.dp))
+                
+                @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+                androidx.compose.foundation.layout.FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    defaultFileTypes.toList().sorted().forEach { format ->
+                        val isSelected = selectedFileTypes.contains(format)
+                        androidx.compose.material3.ElevatedCard(
+                            onClick = {
+                                if (isSelected) selectedFileTypes.remove(format) else selectedFileTypes.add(format)
+                                prefs.edit().putStringSet("selected_file_types", selectedFileTypes.toSet()).apply()
+                            },
+                            modifier = Modifier.padding(horizontal = 4.dp).size(width = 100.dp, height = 80.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = androidx.compose.material3.CardDefaults.elevatedCardColors(
+                                containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                            )
+                        ) {
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Text(format, fontWeight = FontWeight.Bold, color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.primary)
+                            }
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(32.dp))
             }
         }
     }
