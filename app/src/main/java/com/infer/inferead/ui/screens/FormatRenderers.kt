@@ -2131,8 +2131,9 @@ fun EPUBReader(
 
                     """
                         javascript:(function() {
+                            var body = document.body || document.documentElement;
                             var imgs = document.getElementsByTagName('img').length;
-                            var textLen = document.body.innerText.trim().length;
+                            var textLen = body.innerText.trim().length;
                             var isManga = ($isFixedLayout || (imgs > 0 && textLen < 150));
                             
                             if (!isManga) {
@@ -2277,7 +2278,7 @@ fun EPUBReader(
                             function getRangeOffsets(range) {
                                 try {
                                     var preSelectionRange = range.cloneRange();
-                                    preSelectionRange.selectNodeContents(document.body);
+                                    preSelectionRange.selectNodeContents(document.body || document.documentElement);
                                     preSelectionRange.setEnd(range.startContainer, range.startOffset);
                                     var start = preSelectionRange.toString().length;
                                     var end = start + range.toString().length;
@@ -2323,7 +2324,8 @@ fun EPUBReader(
                                         while(mark.firstChild) parent.insertBefore(mark.firstChild, mark);
                                         parent.removeChild(mark);
                                     });
-                                    document.body.normalize(); 
+                                    var rootNode = document.body || document.documentElement;
+                                    rootNode.normalize(); 
                                     
                                     anns.forEach(function(a) {
                                         var parts = a.cfiRange.split(',');
@@ -2338,7 +2340,8 @@ fun EPUBReader(
                                         var end = ann.end;
                                         if(end - start <= 0) return;
                                         
-                                        var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
+                                        var rootNode = document.body || document.documentElement;
+                                        var walker = document.createTreeWalker(rootNode, NodeFilter.SHOW_TEXT, null, false);
                                         var currentOffset = 0;
                                         var node;
                                         

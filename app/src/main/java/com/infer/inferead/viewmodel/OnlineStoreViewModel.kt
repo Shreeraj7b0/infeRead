@@ -26,6 +26,13 @@ class OnlineStoreViewModel(application: Application) : AndroidViewModel(applicat
 
     private val _currentSource = MutableStateFlow("Project Gutenberg")
     val currentSource = _currentSource.asStateFlow()
+    
+    private val _hideWebUi = MutableStateFlow(false)
+    val hideWebUi = _hideWebUi.asStateFlow()
+
+    fun setHideWebUi(hide: Boolean) {
+        _hideWebUi.value = hide
+    }
 
     val activeDownloads = AppDownloadManager.activeDownloads
 

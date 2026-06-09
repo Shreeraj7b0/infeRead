@@ -160,6 +160,10 @@ fun HomeScreen(
     var activeChecklistId by remember { mutableStateOf<Int?>(null) }
     var activeNavTab by remember { mutableStateOf("library") }
     
+    val onlineViewModel: com.infer.inferead.viewmodel.OnlineStoreViewModel = viewModel()
+    val currentOnlineSource by onlineViewModel.currentSource.collectAsState()
+    val hideWebUi by onlineViewModel.hideWebUi.collectAsState()
+    
     LaunchedEffect(isOfflineMode) {
         if (isOfflineMode && activeNavTab == "online") {
             activeNavTab = "library"
@@ -191,7 +195,7 @@ fun HomeScreen(
     var searchExpanded by remember { mutableStateOf(false) }
 
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
-    androidx.activity.compose.BackHandler(enabled = drawerState.isOpen || searchExpanded || activeChecklistId != null) {
+    androidx.activity.compose.BackHandler(enabled = drawerState.isOpen || searchExpanded || activeChecklistId != null || activeNavTab == "online") {
         if (drawerState.isOpen) {
             scope.launch { drawerState.close() }
         } else if (searchExpanded) {
@@ -200,6 +204,8 @@ fun HomeScreen(
             focusManager.clearFocus()
         } else if (activeChecklistId != null) {
             activeChecklistId = null
+        } else if (activeNavTab == "online") {
+            activeNavTab = "library"
         }
     }
 
@@ -588,6 +594,7 @@ fun HomeScreen(
                                     )
                                 },
                                 onClick = {
+                                    activeNavTab = "library"
                                     activeChecklistId = checklist.id
                                     scope.launch { drawerState.close() }
                                 },
@@ -596,6 +603,7 @@ fun HomeScreen(
                                     .height(42.dp)
                                     .combinedClickable(
                                         onClick = {
+                                            activeNavTab = "library"
                                             activeChecklistId = checklist.id
                                             scope.launch { drawerState.close() }
                                         },
@@ -845,7 +853,7 @@ fun HomeScreen(
                                                 Row(
                                                     modifier = Modifier.fillMaxWidth().height(40.dp).clip(RoundedCornerShape(10.dp))
                                                         .combinedClickable(
-                                                            onClick = { scope.launch { drawerState.close(); onNavigateToReader(file.id) } },
+                                                            onClick = { scope.launch { drawerState.close(); activeNavTab = "library"; onNavigateToReader(file.id) } },
                                                             onLongClick = { contextMenuFile = file }
                                                         ).padding(horizontal = 12.dp, vertical = 8.dp),
                                                     verticalAlignment = Alignment.CenterVertically,
@@ -885,6 +893,7 @@ fun HomeScreen(
                                             onClick = {
                                                 scope.launch { 
                                                     drawerState.close()
+                                                    activeNavTab = "library"
                                                     onNavigateToReader(file.id)
                                                 }
                                             },
@@ -931,6 +940,7 @@ fun HomeScreen(
                                             onClick = {
                                                 scope.launch { 
                                                     drawerState.close()
+                                                    activeNavTab = "library"
                                                     onNavigateToReader(file.id)
                                                 }
                                             },
@@ -1046,6 +1056,15 @@ fun HomeScreen(
                             }
                         },
                         actions = {
+                            if (activeNavTab == "online" && (currentOnlineSource == "Anna's Archive" || currentOnlineSource == "Internet Archive")) {
+                                IconButton(onClick = { onlineViewModel.setHideWebUi(!hideWebUi) }) {
+                                    Icon(
+                                        if (hideWebUi) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                        contentDescription = "Toggle Web UI",
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
                             IconButton(onClick = { onNavigateToSettings() }) {
                                 Icon(Icons.Default.Settings, contentDescription = "Settings", tint = MaterialTheme.colorScheme.primary)
                             }
@@ -1069,6 +1088,7 @@ fun HomeScreen(
                         Tab(
                             selected = activeChecklistId == null && pagerState.currentPage == 0,
                             onClick = { 
+                                activeNavTab = "library"
                                 activeChecklistId = null
                                 scope.launch { pagerState.animateScrollToPage(0) } 
                             },
@@ -1077,6 +1097,7 @@ fun HomeScreen(
                         Tab(
                             selected = activeChecklistId == null && pagerState.currentPage == 1,
                             onClick = { 
+                                activeNavTab = "library"
                                 activeChecklistId = null
                                 scope.launch { pagerState.animateScrollToPage(1) } 
                             },
@@ -1093,7 +1114,6 @@ fun HomeScreen(
                     .padding(paddingValues)
             ) {
                 if (activeNavTab == "online") {
-                    val onlineViewModel: com.infer.inferead.viewmodel.OnlineStoreViewModel = viewModel()
                     com.infer.inferead.ui.screens.OnlineStoreTab(viewModel = onlineViewModel, homeViewModel = viewModel)
                 } else if (activeChecklistId != null) {
                     val activeChecklist = checklists.find { it.id == activeChecklistId }
@@ -1341,7 +1361,7 @@ fun HomeScreen(
                                                                       }
                                                                   )
                                                               }
-                                                              .pointerInput(item.id + 1000) {
+                                                              .pointerInput(item) {
                                                                   var accumulatedDrag = 0f
                                                                   detectHorizontalDragGestures(
                                                                       onDragStart = { accumulatedDrag = 0f },

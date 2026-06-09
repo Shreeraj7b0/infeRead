@@ -578,6 +578,9 @@ fun SettingsScreen(
                                 onCheckedChange = { isChecked ->
                                     isOfflineMode = isChecked
                                     prefs.edit().putBoolean("is_offline_mode", isChecked).apply()
+                                    if (isChecked) {
+                                        onNavigateBack()
+                                    }
                                 }
                             )
                         }

@@ -32,8 +32,9 @@ object GutenbergApi {
                 val url = URL(urlString)
                 val connection = url.openConnection() as HttpURLConnection
                 connection.requestMethod = "GET"
-                connection.connectTimeout = 5000
-                connection.readTimeout = 10000
+                connection.setRequestProperty("User-Agent", "Wget/1.21.2")
+                connection.connectTimeout = 10000
+                connection.readTimeout = 20000
                 connection.connect()
 
                 if (connection.responseCode == HttpURLConnection.HTTP_OK) {

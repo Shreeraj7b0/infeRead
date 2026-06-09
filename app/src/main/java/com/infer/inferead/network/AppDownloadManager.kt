@@ -87,6 +87,7 @@ object AppDownloadManager {
         val request = DownloadManager.Request(uri).apply {
             setTitle(fileName)
             setDescription("Downloading book...")
+            addRequestHeader("User-Agent", "Wget/1.21.2")
             setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
             // Save to Downloads/infeRead
             setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "infeRead/$fileName")

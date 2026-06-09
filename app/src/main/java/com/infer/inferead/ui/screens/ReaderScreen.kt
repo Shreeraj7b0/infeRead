@@ -2543,6 +2543,7 @@ fun ReaderScreen(
     if (showFileSearch) {
         var isDropdownVisible by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(true) }
         val focusRequester = androidx.compose.runtime.remember { androidx.compose.ui.focus.FocusRequester() }
+        val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
         val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
         val activity = context as? android.app.Activity
         val windowInsets = androidx.compose.foundation.layout.WindowInsets.statusBars
@@ -2558,6 +2559,22 @@ fun ReaderScreen(
             kotlinx.coroutines.delay(300)
             focusRequester.requestFocus()
             keyboardController?.show()
+        }
+
+        if (isDropdownVisible) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .zIndex(9f)
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onPress = { 
+                                focusManager.clearFocus() 
+                                isDropdownVisible = false
+                            }
+                        )
+                    }
+            )
         }
 
         Box(
@@ -2592,7 +2609,7 @@ fun ReaderScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .focusRequester(focusRequester)
-                            .onFocusChanged { if (it.isFocused) isDropdownVisible = true },
+                            .onFocusChanged { if (it.isFocused) isDropdownVisible = true else isDropdownVisible = false },
                         placeholder = { Text("Search...", color = textColor.copy(alpha = 0.6f)) },
                         leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search", tint = textColor) },
                         trailingIcon = {
@@ -2643,12 +2660,16 @@ fun ReaderScreen(
                         IconButton(onClick = { 
                             val prevIndex = if (currentIndex > 0) currentIndex - 1 else searchResults.size - 1
                             viewModel.triggerSearchJump(searchResults[prevIndex])
+                            isDropdownVisible = false
+                            focusManager.clearFocus()
                         }, modifier = Modifier.size(36.dp)) {
                             Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Previous", tint = textColor)
                         }
                         IconButton(onClick = { 
                             val nextIndex = if (currentIndex < searchResults.size - 1) currentIndex + 1 else 0
                             viewModel.triggerSearchJump(searchResults[nextIndex])
+                            isDropdownVisible = false
+                            focusManager.clearFocus()
                         }, modifier = Modifier.size(36.dp)) {
                             Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Next", tint = textColor)
                         }

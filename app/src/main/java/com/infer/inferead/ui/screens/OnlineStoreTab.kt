@@ -22,6 +22,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -57,9 +58,11 @@ fun OnlineStoreTab(
     val isLoading by viewModel.isLoading.collectAsState()
     val books by viewModel.books.collectAsState()
     val activeDownloads by viewModel.activeDownloads.collectAsState()
+    val hideWebUi by viewModel.hideWebUi.collectAsState()
 
     var expanded by remember { mutableStateOf(false) }
-    val sources = listOf("Project Gutenberg", "Anna's Archive")
+    val sources = listOf("Project Gutenberg", "Anna's Archive", "Internet Archive")
+    val isWebViewSource = currentSource == "Anna's Archive" || currentSource == "Internet Archive"
 
     var isScrolling by remember { mutableStateOf(false) }
     var scrollJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
@@ -110,7 +113,7 @@ fun OnlineStoreTab(
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
-            if (currentSource != "Anna's Archive") {
+            if (!isWebViewSource) {
                 // Top Bar / Controls
                 if (activeDownloads.isNotEmpty()) {
                     Card(
@@ -224,7 +227,7 @@ fun OnlineStoreTab(
                 }
             } // end of if
 
-            if (currentSource == "Anna's Archive") {
+            if (isWebViewSource) {
                 AndroidView(
                     factory = {
                         WebView(it).apply {
@@ -263,7 +266,11 @@ fun OnlineStoreTab(
                             }
                             
                             webViewRef = this
-                            loadUrl(annasArchiveHostname)
+                            if (currentSource == "Anna's Archive") {
+                                loadUrl(annasArchiveHostname)
+                            } else if (currentSource == "Internet Archive") {
+                                loadUrl("https://archive.org/details/texts")
+                            }
                         }
                     },
                     modifier = Modifier.fillMaxSize()
@@ -364,27 +371,52 @@ fun OnlineStoreTab(
             }
         } // End of Column
 
-        if (currentSource == "Anna's Archive") {
+        if (isWebViewSource) {
             androidx.compose.animation.AnimatedVisibility(
-                visible = !isScrolling,
+                visible = !isScrolling && !hideWebUi,
                 enter = androidx.compose.animation.fadeIn(),
                 exit = androidx.compose.animation.fadeOut(),
                 modifier = Modifier.align(Alignment.TopStart)
             ) {
-                // Floating Back Button
-                FloatingActionButton(
-                    onClick = { webViewRef?.let { if (it.canGoBack()) it.goBack() } },
-                    modifier = Modifier.padding(top = 20.dp, start = 16.dp),
-                    shape = CircleShape,
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                // Floating Back/Home Pill
+                Surface(
+                    modifier = Modifier.padding(top = 20.dp, start = 16.dp).height(48.dp),
+                    shape = androidx.compose.foundation.shape.CircleShape,
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    tonalElevation = 6.dp,
+                    shadowElevation = 6.dp
                 ) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = "Go Back")
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(
+                            onClick = { webViewRef?.let { if (it.canGoBack()) it.goBack() } },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(Icons.Default.ArrowBack, contentDescription = "Go Back", modifier = Modifier.size(20.dp))
+                        }
+                        IconButton(
+                            onClick = { 
+                                webViewRef?.let { 
+                                    if (currentSource == "Anna's Archive") {
+                                        it.loadUrl(annasArchiveHostname)
+                                    } else if (currentSource == "Internet Archive") {
+                                        it.loadUrl("https://archive.org/details/texts")
+                                    }
+                                } 
+                            },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(Icons.Default.Home, contentDescription = "Home", modifier = Modifier.size(20.dp))
+                        }
+                    }
                 }
             }
 
             androidx.compose.animation.AnimatedVisibility(
-                visible = !isScrolling,
+                visible = !isScrolling && !hideWebUi,
                 enter = androidx.compose.animation.fadeIn(),
                 exit = androidx.compose.animation.fadeOut(),
                 modifier = Modifier.align(Alignment.TopEnd)

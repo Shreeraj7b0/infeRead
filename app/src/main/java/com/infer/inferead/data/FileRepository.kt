@@ -316,6 +316,23 @@ class FileRepository(private val context: Context, private val dao: InfeReadDao)
     }
 
     suspend fun deleteFile(fileId: Int) = withContext(Dispatchers.IO) {
+        val file = dao.getLibraryFileById(fileId)
+        if (file != null) {
+            try {
+                val physicalFile = File(file.filePath)
+                if (physicalFile.exists()) {
+                    physicalFile.delete()
+                }
+                if (file.thumbnailUri != null) {
+                    val thumbFile = File(file.thumbnailUri)
+                    if (thumbFile.exists()) {
+                        thumbFile.delete()
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
         dao.deleteFile(fileId)
     }
 
