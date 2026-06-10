@@ -144,8 +144,14 @@ fun HomeScreen(
         )
     }
     
-    val pagerState = androidx.compose.foundation.pager.rememberPagerState(initialPage = homePrefs.getInt("active_tab", 0), pageCount = { 2 })
-    LaunchedEffect(pagerState.currentPage) { homePrefs.edit().putInt("active_tab", pagerState.currentPage).apply() }
+    var selectedLibraryTab by remember { mutableIntStateOf(homePrefs.getInt("active_tab", 0)) }
+    val pagerState = androidx.compose.foundation.pager.rememberPagerState(initialPage = selectedLibraryTab, pageCount = { 2 })
+    LaunchedEffect(pagerState.currentPage) {
+        if (selectedLibraryTab != pagerState.currentPage) {
+            selectedLibraryTab = pagerState.currentPage
+            homePrefs.edit().putInt("active_tab", selectedLibraryTab).apply()
+        }
+    }
     val bookshelves by viewModel.bookshelves.collectAsState()
     val bookshelfItems by viewModel.bookshelfItems.collectAsState()
     var isBookshelfAssignmentMode by remember { mutableStateOf(false) }
@@ -619,7 +625,7 @@ fun HomeScreen(
                             )
                         }
                         
-                        if (pagerState.currentPage == 0) {
+                        if (selectedLibraryTab == 0) {
                             items(sectionOrder.filter { it != "Checklists" }, key = { "nav_$it" }) { sectionName ->
                             val filesForCategory = groupedFiles[sectionName] ?: emptyList()
                             if (filesForCategory.isNotEmpty()) {
@@ -772,7 +778,7 @@ fun HomeScreen(
                                 }
                             }
                             }
-                        } else if (pagerState.currentPage == 1) {
+                        } else if (selectedLibraryTab == 1) {
                             items(bookshelves.sortedBy { it.sortOrder }, key = { "nav_bookshelf_${it.id}" }) { shelf ->
                                 val itemsInShelf = remember(bookshelfItems, shelf.id) { bookshelfItems.filter { it.bookshelfId == shelf.id } }
                                 val shelfFiles = remember(itemsInShelf, libraryFiles) { itemsInShelf.mapNotNull { bItem -> libraryFiles.find { it.id == bItem.fileId } } }
@@ -989,9 +995,11 @@ fun HomeScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Surface(
-                                    onClick = { scope.launch { pagerState.animateScrollToPage(0) } },
+                                    onClick = { 
+                                        selectedLibraryTab = 0
+                                    },
                                     shape = RoundedCornerShape(10.dp),
-                                    color = if (pagerState.currentPage == 0) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                                    color = if (selectedLibraryTab == 0) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
                                     modifier = Modifier.weight(1f)
                                 ) {
                                     Row(
@@ -1001,17 +1009,19 @@ fun HomeScreen(
                                     ) {
                                         Icon(
                                             Icons.Default.AutoStories, null,
-                                            tint = if (pagerState.currentPage == 0) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            tint = if (selectedLibraryTab == 0) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
                                             modifier = Modifier.size(20.dp).padding(end = 6.dp)
                                         )
-                                        Text("Library", style = MaterialTheme.typography.titleSmall.copy(fontWeight = if (pagerState.currentPage == 0) FontWeight.Bold else FontWeight.SemiBold, color = if (pagerState.currentPage == 0) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text("Library", style = MaterialTheme.typography.titleSmall.copy(fontWeight = if (selectedLibraryTab == 0) FontWeight.Bold else FontWeight.SemiBold, color = if (selectedLibraryTab == 0) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant), maxLines = 1, overflow = TextOverflow.Ellipsis)
                                     }
                                 }
                                 Spacer(Modifier.width(2.dp))
                                 Surface(
-                                    onClick = { scope.launch { pagerState.animateScrollToPage(1) } },
+                                    onClick = { 
+                                        selectedLibraryTab = 1
+                                    },
                                     shape = RoundedCornerShape(10.dp),
-                                    color = if (pagerState.currentPage == 1) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                                    color = if (selectedLibraryTab == 1) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
                                     modifier = Modifier.weight(1f)
                                 ) {
                                     Row(
@@ -1021,10 +1031,10 @@ fun HomeScreen(
                                     ) {
                                         Icon(
                                             Icons.Default.CollectionsBookmark, null,
-                                            tint = if (pagerState.currentPage == 1) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            tint = if (selectedLibraryTab == 1) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
                                             modifier = Modifier.size(20.dp).padding(end = 6.dp)
                                         )
-                                        Text("Shelf", style = MaterialTheme.typography.titleSmall.copy(fontWeight = if (pagerState.currentPage == 1) FontWeight.Bold else FontWeight.SemiBold, color = if (pagerState.currentPage == 1) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text("Shelf", style = MaterialTheme.typography.titleSmall.copy(fontWeight = if (selectedLibraryTab == 1) FontWeight.Bold else FontWeight.SemiBold, color = if (selectedLibraryTab == 1) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant), maxLines = 1, overflow = TextOverflow.Ellipsis)
                                     }
                                 }
                             }
@@ -1268,28 +1278,28 @@ fun HomeScreen(
                                     localItems.addAll(activeChecklistItems)
                                 }
                                 val reorderState = rememberReorderableLazyListState(
-                                      onMove = { from, to ->
-                                          localItems.apply {
-                                              if (from.index >= 0 && to.index >= 0 && from.index < size && to.index < size) {
-                                                  if (!get(from.index).isPinned && !get(to.index).isPinned) {
-                                                      add(to.index, removeAt(from.index))
-                                                  }
-                                              }
-                                          }
-                                      },
-                                      onDragEnd = { startIndex, endIndex ->
-                                          if (startIndex != endIndex) {
-                                              localItems.forEachIndexed { index, checklistItem ->
-                                                  viewModel.updateChecklistItem(checklistItem.copy(sortOrder = index))
-                                              }
-                                          }
-                                      }
-                                  )
-                                  LazyColumn(
-                                      state = reorderState.listState,
-                                      modifier = Modifier.fillMaxWidth().weight(1f).reorderable(reorderState),
-                                      verticalArrangement = Arrangement.spacedBy(8.dp)
-                                  ) {
+                                    onMove = { from, to ->
+                                        localItems.apply {
+                                            if (from.index >= 0 && to.index >= 0 && from.index < size && to.index < size) {
+                                                if (!get(from.index).isPinned && !get(to.index).isPinned) {
+                                                    add(to.index, removeAt(from.index))
+                                                }
+                                            }
+                                        }
+                                    },
+                                    onDragEnd = { startIndex, endIndex ->
+                                        if (startIndex != endIndex) {
+                                            localItems.forEachIndexed { index, checklistItem ->
+                                                viewModel.updateChecklistItem(checklistItem.copy(sortOrder = index))
+                                            }
+                                        }
+                                    }
+                                )
+                                LazyColumn(
+                                    state = reorderState.listState,
+                                    modifier = Modifier.fillMaxWidth().weight(1f).reorderable(reorderState),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
                                       items(localItems, key = { it.id }) { item ->
                                           var isHoverMenuVisible by remember { mutableStateOf(false) }
                                           var showEditDialog by remember { mutableStateOf(false) }

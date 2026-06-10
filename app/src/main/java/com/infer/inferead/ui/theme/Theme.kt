@@ -42,6 +42,7 @@ fun InfeReadTheme(
     val currentBg by ThemeManager.currentBackground.collectAsState()
     val currentAccent by ThemeManager.currentAccent.collectAsState()
     val customColor by ThemeManager.customColor.collectAsState()
+    val currentFontFamily by ThemeManager.currentFontFamily.collectAsState()
 
     val context = LocalContext.current
     
@@ -94,7 +95,7 @@ fun InfeReadTheme(
 
     MaterialTheme(
         colorScheme = colorScheme,
-        typography = Typography,
+        typography = getAppTypography(context, currentFontFamily),
         content = content
     )
 }

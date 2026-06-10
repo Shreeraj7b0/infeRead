@@ -817,6 +817,11 @@ fun TXTReader(
             "Amita" -> androidx.compose.ui.text.font.FontFamily(androidx.compose.ui.text.font.Font("fonts/amita.ttf", context.assets))
             "Hind" -> androidx.compose.ui.text.font.FontFamily(androidx.compose.ui.text.font.Font("fonts/hind.ttf", context.assets))
             "Yatra One" -> androidx.compose.ui.text.font.FontFamily(androidx.compose.ui.text.font.Font("fonts/yatra_one.ttf", context.assets))
+            "Chelsea Market" -> androidx.compose.ui.text.font.FontFamily(androidx.compose.ui.text.font.Font("fonts/chelsea_market.ttf", context.assets))
+            "Libre Baskerville" -> androidx.compose.ui.text.font.FontFamily(androidx.compose.ui.text.font.Font("fonts/libre_baskerville.ttf", context.assets))
+            "Lora" -> androidx.compose.ui.text.font.FontFamily(androidx.compose.ui.text.font.Font("fonts/lora.ttf", context.assets))
+            "Nunito" -> androidx.compose.ui.text.font.FontFamily(androidx.compose.ui.text.font.Font("fonts/nunito.ttf", context.assets))
+            "Playfair Display" -> androidx.compose.ui.text.font.FontFamily(androidx.compose.ui.text.font.Font("fonts/playfair_display.ttf", context.assets))
             else -> androidx.compose.ui.text.font.FontFamily.SansSerif
         }
 
@@ -837,6 +842,11 @@ fun TXTReader(
                         @font-face { font-family: 'Amita'; src: url('file:///android_asset/fonts/amita.ttf'); }
                         @font-face { font-family: 'Hind'; src: url('file:///android_asset/fonts/hind.ttf'); }
                         @font-face { font-family: 'Yatra One'; src: url('file:///android_asset/fonts/yatra_one.ttf'); }
+                        @font-face { font-family: 'Chelsea Market'; src: url('file:///android_asset/fonts/chelsea_market.ttf'); }
+                        @font-face { font-family: 'Libre Baskerville'; src: url('file:///android_asset/fonts/libre_baskerville.ttf'); }
+                        @font-face { font-family: 'Lora'; src: url('file:///android_asset/fonts/lora.ttf'); }
+                        @font-face { font-family: 'Nunito'; src: url('file:///android_asset/fonts/nunito.ttf'); }
+                        @font-face { font-family: 'Playfair Display'; src: url('file:///android_asset/fonts/playfair_display.ttf'); }
                         body {
                             margin: 0;
                             padding: 16px;
@@ -860,6 +870,11 @@ fun TXTReader(
                                     "Amita" -> "\"Amita\", sans-serif"
                                     "Hind" -> "\"Hind\", sans-serif"
                                     "Yatra One" -> "\"Yatra One\", sans-serif"
+                                    "Chelsea Market" -> "\"Chelsea Market\", sans-serif"
+                                    "Libre Baskerville" -> "\"Libre Baskerville\", serif"
+                                    "Lora" -> "\"Lora\", serif"
+                                    "Nunito" -> "\"Nunito\", sans-serif"
+                                    "Playfair Display" -> "\"Playfair Display\", serif"
                                     else -> "\"Google Sans\", sans-serif"
                                 }
                             };
@@ -996,6 +1011,11 @@ fun TXTReader(
                             "Amita" -> "\"Amita\", sans-serif"
                             "Hind" -> "\"Hind\", sans-serif"
                             "Yatra One" -> "\"Yatra One\", sans-serif"
+                            "Chelsea Market" -> "\"Chelsea Market\", sans-serif"
+                            "Libre Baskerville" -> "\"Libre Baskerville\", serif"
+                            "Lora" -> "\"Lora\", serif"
+                            "Nunito" -> "\"Nunito\", sans-serif"
+                            "Playfair Display" -> "\"Playfair Display\", serif"
                             else -> "\"Google Sans\", sans-serif"
                         }
                         val js = """
@@ -2250,6 +2270,11 @@ fun EPUBReader(
                     "Amita" -> "'Amita'"
                     "Hind" -> "'Hind'"
                     "Yatra One" -> "'Yatra One'"
+                    "Chelsea Market" -> "'Chelsea Market'"
+                    "Libre Baskerville" -> "'Libre Baskerville'"
+                    "Lora" -> "'Lora'"
+                    "Nunito" -> "'Nunito'"
+                    "Playfair Display" -> "'Playfair Display'"
                     else -> "sans-serif"
                 }
                 val fontSize = (16 * settings.fontSizeMultiplier).toInt()
@@ -2279,6 +2304,26 @@ fun EPUBReader(
                         @font-face {
                             font-family: 'Yatra One';
                             src: url('file:///android_asset/fonts/yatra_one.ttf');
+                        }
+                        @font-face {
+                            font-family: 'Chelsea Market';
+                            src: url('file:///android_asset/fonts/chelsea_market.ttf');
+                        }
+                        @font-face {
+                            font-family: 'Libre Baskerville';
+                            src: url('file:///android_asset/fonts/libre_baskerville.ttf');
+                        }
+                        @font-face {
+                            font-family: 'Lora';
+                            src: url('file:///android_asset/fonts/lora.ttf');
+                        }
+                        @font-face {
+                            font-family: 'Nunito';
+                            src: url('file:///android_asset/fonts/nunito.ttf');
+                        }
+                        @font-face {
+                            font-family: 'Playfair Display';
+                            src: url('file:///android_asset/fonts/playfair_display.ttf');
                         }
                     """
                     val layoutCss = if (isFixedLayout) """

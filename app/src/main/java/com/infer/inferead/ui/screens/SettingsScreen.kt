@@ -24,6 +24,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.infer.inferead.viewmodel.HomeViewModel
 import com.infer.inferead.ui.theme.ThemeManager
@@ -480,6 +482,56 @@ fun SettingsScreen(
                                         contentDescription = "Custom Color",
                                         tint = Color.White,
                                         modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        Divider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+
+                        Text(
+                            "App Font Style", 
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        val appFonts = listOf(
+                            "Default" to androidx.compose.ui.text.font.FontFamily.Default,
+                            "Google Sans" to androidx.compose.ui.text.font.FontFamily(androidx.compose.ui.text.font.Font("fonts/google_sans.ttf", context.assets)),
+                            "Literata" to androidx.compose.ui.text.font.FontFamily(androidx.compose.ui.text.font.Font("fonts/literata.ttf", context.assets)),
+                            "Amita" to androidx.compose.ui.text.font.FontFamily(androidx.compose.ui.text.font.Font("fonts/amita.ttf", context.assets)),
+                            "Hind" to androidx.compose.ui.text.font.FontFamily(androidx.compose.ui.text.font.Font("fonts/hind.ttf", context.assets)),
+                            "Yatra One" to androidx.compose.ui.text.font.FontFamily(androidx.compose.ui.text.font.Font("fonts/yatra_one.ttf", context.assets)),
+                            "Chelsea Market" to androidx.compose.ui.text.font.FontFamily(androidx.compose.ui.text.font.Font("fonts/chelsea_market.ttf", context.assets)),
+                            "Libre Baskerville" to androidx.compose.ui.text.font.FontFamily(androidx.compose.ui.text.font.Font("fonts/libre_baskerville.ttf", context.assets)),
+                            "Lora" to androidx.compose.ui.text.font.FontFamily(androidx.compose.ui.text.font.Font("fonts/lora.ttf", context.assets)),
+                            "Nunito" to androidx.compose.ui.text.font.FontFamily(androidx.compose.ui.text.font.Font("fonts/nunito.ttf", context.assets)),
+                            "Playfair Display" to androidx.compose.ui.text.font.FontFamily(androidx.compose.ui.text.font.Font("fonts/playfair_display.ttf", context.assets))
+                        )
+                        val currentFontFamily by ThemeManager.currentFontFamily.collectAsState()
+                        
+                        Row(
+                            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            appFonts.forEach { (fontName, fontFam) ->
+                                val isSelected = currentFontFamily == fontName
+                                val bgColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                val textColor = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+                                val borderColor = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent
+                                
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(bgColor)
+                                        .border(if (isSelected) 2.dp else 0.dp, borderColor, RoundedCornerShape(8.dp))
+                                        .clickable { ThemeManager.setFontFamily(context, fontName) }
+                                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = fontName,
+                                        style = MaterialTheme.typography.bodyLarge.copy(fontFamily = fontFam),
+                                        color = textColor
                                     )
                                 }
                             }

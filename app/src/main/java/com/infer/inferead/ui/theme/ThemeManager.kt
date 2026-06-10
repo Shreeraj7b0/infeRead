@@ -33,6 +33,9 @@ object ThemeManager {
     private val _customColor = MutableStateFlow(Color(0xFF6200EE))
     val customColor: StateFlow<Color> = _customColor.asStateFlow()
 
+    private val _currentFontFamily = MutableStateFlow("Default")
+    val currentFontFamily: StateFlow<String> = _currentFontFamily.asStateFlow()
+
     fun init(context: Context) {
         val prefs = context.getSharedPreferences("settings_prefs", Context.MODE_PRIVATE)
         val bgName = prefs.getString("app_theme_bg", AppThemeBackground.System.name) ?: AppThemeBackground.System.name
@@ -43,6 +46,9 @@ object ThemeManager {
         
         val customColorInt = prefs.getInt("app_theme_custom_color", 0xFF6200EE.toInt())
         _customColor.value = Color(customColorInt)
+
+        val fontFam = prefs.getString("app_theme_font", "Default") ?: "Default"
+        _currentFontFamily.value = fontFam
     }
 
     fun setBackground(context: Context, bg: AppThemeBackground) {
@@ -67,5 +73,11 @@ object ThemeManager {
         )
         prefs.edit().putInt("app_theme_custom_color", colorInt).apply()
         _customColor.value = color
+    }
+
+    fun setFontFamily(context: Context, fontFam: String) {
+        val prefs = context.getSharedPreferences("settings_prefs", Context.MODE_PRIVATE)
+        prefs.edit().putString("app_theme_font", fontFam).apply()
+        _currentFontFamily.value = fontFam
     }
 }

@@ -48,6 +48,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.ui.zIndex
 import androidx.compose.foundation.rememberScrollState
@@ -1864,7 +1865,7 @@ fun ReaderScreen(
                 }
             }
 
-            // Removed custom TXT scrubbers in favor of the universal scrubber above.
+
             }
         }
         
@@ -2157,7 +2158,12 @@ fun ReaderScreen(
                         "Google Sans" to FontFamily(androidx.compose.ui.text.font.Font("fonts/google_sans.ttf", context.assets)),
                         "Literata" to FontFamily(androidx.compose.ui.text.font.Font("fonts/literata.ttf", context.assets)),
                         "Serif" to FontFamily.Serif,
-                        "Monospace" to FontFamily.Monospace
+                        "Monospace" to FontFamily.Monospace,
+                        "Chelsea Market" to FontFamily(androidx.compose.ui.text.font.Font("fonts/chelsea_market.ttf", context.assets)),
+                        "Libre Baskerville" to FontFamily(androidx.compose.ui.text.font.Font("fonts/libre_baskerville.ttf", context.assets)),
+                        "Lora" to FontFamily(androidx.compose.ui.text.font.Font("fonts/lora.ttf", context.assets)),
+                        "Nunito" to FontFamily(androidx.compose.ui.text.font.Font("fonts/nunito.ttf", context.assets)),
+                        "Playfair Display" to FontFamily(androidx.compose.ui.text.font.Font("fonts/playfair_display.ttf", context.assets))
                     )
                     
                     val devanagariFonts = listOf(
@@ -2170,14 +2176,14 @@ fun ReaderScreen(
                     @Composable
                     fun FontRow(fonts: List<Pair<String, FontFamily>>) {
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.Start,
                             verticalAlignment = Alignment.Top
                         ) {
                             fonts.forEach { (name, font) ->
                                 val isSelected = settings.fontFamily == name
                                 Column(
-                                    modifier = Modifier.weight(1f, fill = false).width(64.dp).padding(horizontal = 4.dp),
+                                    modifier = Modifier.width(72.dp).padding(horizontal = 4.dp),
                                     horizontalAlignment = Alignment.CenterHorizontally
                                 ) {
                                     Surface(
@@ -2346,7 +2352,12 @@ fun ReaderScreen(
                         "Google Sans" to FontFamily(androidx.compose.ui.text.font.Font("fonts/google_sans.ttf", context.assets)),
                         "Literata" to FontFamily(androidx.compose.ui.text.font.Font("fonts/literata.ttf", context.assets)),
                         "Serif" to FontFamily.Serif,
-                        "Monospace" to FontFamily.Monospace
+                        "Monospace" to FontFamily.Monospace,
+                        "Chelsea Market" to FontFamily(androidx.compose.ui.text.font.Font("fonts/chelsea_market.ttf", context.assets)),
+                        "Libre Baskerville" to FontFamily(androidx.compose.ui.text.font.Font("fonts/libre_baskerville.ttf", context.assets)),
+                        "Lora" to FontFamily(androidx.compose.ui.text.font.Font("fonts/lora.ttf", context.assets)),
+                        "Nunito" to FontFamily(androidx.compose.ui.text.font.Font("fonts/nunito.ttf", context.assets)),
+                        "Playfair Display" to FontFamily(androidx.compose.ui.text.font.Font("fonts/playfair_display.ttf", context.assets))
                     )
                     
                     val devanagariFonts = listOf(
@@ -2359,14 +2370,14 @@ fun ReaderScreen(
                     @Composable
                     fun FontRowTxt(fonts: List<Pair<String, FontFamily>>) {
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.Start,
                             verticalAlignment = Alignment.Top
                         ) {
                             fonts.forEach { (name, font) ->
                                 val isSelected = settings.fontFamily == name
                                 Column(
-                                    modifier = Modifier.weight(1f, fill = false).width(64.dp).padding(horizontal = 4.dp),
+                                    modifier = Modifier.width(72.dp).padding(horizontal = 4.dp),
                                     horizontalAlignment = Alignment.CenterHorizontally
                                 ) {
                                     Surface(
