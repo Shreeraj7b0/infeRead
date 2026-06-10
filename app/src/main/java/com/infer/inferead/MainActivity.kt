@@ -19,11 +19,20 @@ val LocalThemeToggle = staticCompositionLocalOf<() -> Unit> { {} }
 
 class MainActivity : ComponentActivity() {
     private val pendingIntentUri = kotlinx.coroutines.flow.MutableStateFlow<Uri?>(null)
+    private val pendingWidgetAction = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+    private val pendingWidgetChecklistId = kotlinx.coroutines.flow.MutableStateFlow<Int?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
         ThemeManager.init(this)
+        
+        if (intent?.action == "com.infer.inferead.NEW_CHECKLIST" || intent?.action == "com.infer.inferead.OPEN_CHECKLIST") {
+            pendingWidgetAction.value = intent?.action
+            if (intent?.hasExtra("checklist_id") == true) {
+                pendingWidgetChecklistId.value = intent?.getIntExtra("checklist_id", -1)
+            }
+        }
         
         val uri = intent?.data ?: if (intent?.action == Intent.ACTION_SEND) {
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
@@ -46,6 +55,8 @@ class MainActivity : ComponentActivity() {
             var isDarkTheme by remember { mutableStateOf(systemDark) }
 
             val pendingUri by pendingIntentUri.collectAsState()
+            val widgetAction by pendingWidgetAction.collectAsState()
+            val widgetChecklistId by pendingWidgetChecklistId.collectAsState()
             
             CompositionLocalProvider(LocalThemeToggle provides { 
                 val currentBg = ThemeManager.currentBackground.value
@@ -65,7 +76,13 @@ class MainActivity : ComponentActivity() {
                     ) {
                         AppNavigation(
                             pendingUri = pendingUri,
-                            onUriHandled = { pendingIntentUri.value = null }
+                            widgetAction = widgetAction,
+                            widgetChecklistId = widgetChecklistId,
+                            onUriHandled = { pendingIntentUri.value = null },
+                            onWidgetActionHandled = {
+                                pendingWidgetAction.value = null
+                                pendingWidgetChecklistId.value = null
+                            }
                         )
                     }
                 }
@@ -76,6 +93,13 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        
+        if (intent.action == "com.infer.inferead.NEW_CHECKLIST" || intent.action == "com.infer.inferead.OPEN_CHECKLIST") {
+            pendingWidgetAction.value = intent.action
+            if (intent.hasExtra("checklist_id")) {
+                pendingWidgetChecklistId.value = intent.getIntExtra("checklist_id", -1)
+            }
+        }
         
         val uri = intent.data ?: if (intent.action == Intent.ACTION_SEND) {
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {

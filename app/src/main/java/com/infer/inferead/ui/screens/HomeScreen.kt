@@ -93,6 +93,7 @@ fun getSectionDisplayName(sectionName: String): String {
 fun HomeScreen(
     viewModel: HomeViewModel = viewModel(),
     initialChecklistId: Int? = null,
+    initialNewChecklist: Boolean = false,
     pendingUri: android.net.Uri? = null,
     onUriHandled: () -> Unit = {},
     onNavigateToReader: (Int) -> Unit = {},
@@ -178,11 +179,9 @@ fun HomeScreen(
     
     LaunchedEffect(pendingUri) {
         if (pendingUri != null) {
-            val fileId = viewModel.importFile(pendingUri)
+            // Link the file rather than copying it into app storage
+            val fileId = viewModel.linkOrImportFile(pendingUri)
             onUriHandled()
-            if (fileId != null) {
-                onNavigateToReader(fileId)
-            }
         }
     }
     
@@ -341,7 +340,7 @@ fun HomeScreen(
         homePrefs.edit().putStringSet("minimised_nav_bookshelves", newSet).apply()
     }
     
-    var showCreateChecklistDialog by remember { mutableStateOf(false) }
+    var showCreateChecklistDialog by remember { mutableStateOf(initialNewChecklist) }
     var ratingDialogFile by remember { mutableStateOf<LibraryFile?>(null) }
     var renamingChecklist by remember { mutableStateOf<Checklist?>(null) }
     var showColorPickerDialog by remember { mutableStateOf<Checklist?>(null) }
@@ -367,13 +366,11 @@ fun HomeScreen(
     }
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
-    ) { uri: Uri? -> 
-        uri?.let { 
-            try { context.contentResolver.takePersistableUriPermission(it, Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (e: SecurityException) {}
-            coroutineScope.launch {
-                viewModel.importFile(it)
-            }
-        } 
+    ) { uri: Uri? ->
+        uri?.let {
+            // Link via persistent URI — no file copy, survives moves
+            viewModel.linkOrImportFile(it)
+        }
     }
 
     val thumbnailPickerLauncher = rememberLauncherForActivityResult(

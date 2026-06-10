@@ -83,6 +83,9 @@ interface InfeReadDao {
     @Query("UPDATE checklist_items SET isCompleted = :isCompleted WHERE checklistId = :checklistId")
     suspend fun markAllChecklistItemsCompletion(checklistId: Int, isCompleted: Boolean): Int
 
+    @Query("UPDATE checklist_items SET isCompleted = :isCompleted WHERE id = :itemId")
+    suspend fun updateChecklistItemCompletion(itemId: Int, isCompleted: Boolean): Int
+
     @Query("DELETE FROM checklist_items WHERE id = :itemId")
     suspend fun deleteChecklistItem(itemId: Int): Int
 

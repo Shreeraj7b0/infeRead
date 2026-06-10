@@ -187,7 +187,13 @@ fun ReaderScreen(
             com.infer.inferead.ui.screens.SegregationMode.PAGES -> mapOf("By Pages (Desc)" to libraryFiles.sortedByDescending { it.totalPages })
             com.infer.inferead.ui.screens.SegregationMode.FILE_SIZE -> mapOf("By File Size (Desc)" to libraryFiles.sortedByDescending { 
                 try {
-                    java.io.File(it.filePath).length()
+                    if (it.filePath.startsWith("content://")) {
+                        try {
+                            context.contentResolver.openFileDescriptor(android.net.Uri.parse(it.filePath), "r")?.use { pfd -> pfd.statSize } ?: 0L
+                        } catch (e: Exception) { 0L }
+                    } else {
+                        java.io.File(it.filePath).length()
+                    }
                 } catch (e: Exception) {
                     0L
                 }
@@ -834,7 +840,11 @@ fun ReaderScreen(
                                         isTitleExpanded = !isTitleExpanded
                                     }
                             )
-                            val displayFormat = java.io.File(currentFile?.filePath ?: "").extension.uppercase().takeIf { it.isNotEmpty() } ?: currentFile?.format
+                            val displayFormat = if ((currentFile?.filePath ?: "").startsWith("content://")) {
+                                currentFile?.format
+                            } else {
+                                java.io.File(currentFile?.filePath ?: "").extension.uppercase().takeIf { it.isNotEmpty() } ?: currentFile?.format
+                            }
                             displayFormat?.let { format ->
                                 var formatDropdownExpanded by remember { mutableStateOf(false) }
                                 Box {

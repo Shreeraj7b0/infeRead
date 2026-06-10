@@ -10,7 +10,7 @@ import com.github.junrar.Archive
 import org.apache.commons.compress.archivers.sevenz.SevenZFile
 
 object ArchiveExtractor {
-    suspend fun extractZip(zipFilePath: String, outputDir: File): Boolean = withContext(Dispatchers.IO) {
+    suspend fun extractZip(zipFilePath: String, outputDir: File, extractMedia: Boolean = true): Boolean = withContext(Dispatchers.IO) {
         try {
             if (!outputDir.exists()) {
                 outputDir.mkdirs()
@@ -33,6 +33,10 @@ object ArchiveExtractor {
                     if (entry.isDirectory) {
                         destFile.mkdirs()
                     } else {
+                        val isMedia = destFile.extension.lowercase() in listOf("jpg", "jpeg", "png", "webp", "gif", "mp3", "mp4", "m4a", "webm", "svg", "ttf", "otf", "woff", "woff2")
+                        if (!extractMedia && isMedia) {
+                            continue
+                        }
                         destFile.parentFile?.mkdirs()
                         zip.getInputStream(entry).use { input ->
                             BufferedOutputStream(FileOutputStream(destFile)).use { output ->
@@ -49,8 +53,8 @@ object ArchiveExtractor {
         }
     }
 
-    suspend fun extractArchive(archivePath: String, outputDir: File, format: String): Boolean = withContext(Dispatchers.IO) {
-        if (format == "EPUB" || format == "CBZ") return@withContext extractZip(archivePath, outputDir)
+    suspend fun extractArchive(archivePath: String, outputDir: File, format: String, extractMedia: Boolean = true): Boolean = withContext(Dispatchers.IO) {
+        if (format == "EPUB" || format == "CBZ") return@withContext extractZip(archivePath, outputDir, extractMedia)
         try {
             if (!outputDir.exists()) outputDir.mkdirs()
             else if (outputDir.listFiles()?.isNotEmpty() == true) return@withContext true
@@ -61,11 +65,19 @@ object ArchiveExtractor {
                         var header = archive.nextFileHeader()
                         while (header != null) {
                             val destFile = File(outputDir, header.fileNameString.trim())
-                            if (header.isDirectory) destFile.mkdirs()
-                            else {
-                                destFile.parentFile?.mkdirs()
-                                FileOutputStream(destFile).use { out -> archive.extractFile(header, out) }
-                            }
+                                if (header.isDirectory) {
+                                    destFile.mkdirs()
+                                } else {
+                                    val isMedia = destFile.extension.lowercase() in listOf("jpg", "jpeg", "png", "webp", "gif", "mp3", "mp4", "m4a", "webm", "svg", "ttf", "otf", "woff", "woff2")
+                                    if (!extractMedia && isMedia) {
+                                        header = archive.nextFileHeader()
+                                        continue
+                                    }
+                                    destFile.parentFile?.mkdirs()
+                                    FileOutputStream(destFile).use { output ->
+                                        archive.extractFile(header, output)
+                                    }
+                                }
                             header = archive.nextFileHeader()
                         }
                     }
@@ -76,8 +88,14 @@ object ArchiveExtractor {
                         var entry = sevenZFile.nextEntry
                         while (entry != null) {
                             val destFile = File(outputDir, entry.name)
-                            if (entry.isDirectory) destFile.mkdirs()
-                            else {
+                            if (entry.isDirectory) {
+                                destFile.mkdirs()
+                            } else {
+                                val isMedia = destFile.extension.lowercase() in listOf("jpg", "jpeg", "png", "webp", "gif", "mp3", "mp4", "m4a", "webm", "svg", "ttf", "otf", "woff", "woff2")
+                                if (!extractMedia && isMedia) {
+                                    entry = sevenZFile.nextEntry
+                                    continue
+                                }
                                 destFile.parentFile?.mkdirs()
                                 val content = ByteArray(entry.size.toInt())
                                 sevenZFile.read(content, 0, content.size)

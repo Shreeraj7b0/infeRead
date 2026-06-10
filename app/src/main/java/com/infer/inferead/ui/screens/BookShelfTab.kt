@@ -381,16 +381,16 @@ fun BookShelfTab(
                                     sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
                                 ) {
                                     Column(
-                                        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp),
+                                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
                                         horizontalAlignment = Alignment.CenterHorizontally
                                     ) {
-                                        Icon(Icons.Default.Add, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(48.dp))
+                                        Icon(Icons.Default.Add, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Text("Import Files", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                                         Spacer(modifier = Modifier.height(16.dp))
-                                        Text("Import Files", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                                        Spacer(modifier = Modifier.height(32.dp))
                                         Row(
                                             modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                            horizontalArrangement = Arrangement.spacedBy(12.dp)
                                         ) {
                                             androidx.compose.material3.ElevatedCard(
                                                 onClick = {
@@ -398,13 +398,13 @@ fun BookShelfTab(
                                                     addFileTargetShelfId = null
                                                     massImportFolderLauncher.launch(null) 
                                                 },
-                                                modifier = Modifier.weight(1f).height(100.dp),
-                                                shape = RoundedCornerShape(16.dp)
+                                                modifier = Modifier.weight(1f).height(72.dp),
+                                                shape = RoundedCornerShape(12.dp)
                                             ) {
                                                 Column(modifier = Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                                                    Icon(Icons.Default.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                                                    Spacer(modifier = Modifier.height(8.dp))
-                                                    Text("Select Folder", fontWeight = FontWeight.Bold)
+                                                    Icon(Icons.Default.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
+                                                    Spacer(modifier = Modifier.height(6.dp))
+                                                    Text("Select Folder", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                                                 }
                                             }
                                             androidx.compose.material3.ElevatedCard(
@@ -413,17 +413,17 @@ fun BookShelfTab(
                                                     addFileTargetShelfId = null
                                                     massImportFilesLauncher.launch(arrayOf("*/*")) 
                                                 },
-                                                modifier = Modifier.weight(1f).height(100.dp),
-                                                shape = RoundedCornerShape(16.dp)
+                                                modifier = Modifier.weight(1f).height(72.dp),
+                                                shape = RoundedCornerShape(12.dp)
                                             ) {
                                                 Column(modifier = Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                                                    Icon(Icons.Default.InsertDriveFile, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                                                    Spacer(modifier = Modifier.height(8.dp))
-                                                    Text("Select Files", fontWeight = FontWeight.Bold)
+                                                    Icon(Icons.Default.InsertDriveFile, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
+                                                    Spacer(modifier = Modifier.height(6.dp))
+                                                    Text("Select Files", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                                                 }
                                             }
                                         }
-                                        Spacer(modifier = Modifier.height(32.dp))
+                                        Spacer(modifier = Modifier.height(16.dp))
                                     }
                                 }
                             }
@@ -486,29 +486,29 @@ fun BookShelfTab(
                                     sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
                                 ) {
                                     Column(
-                                        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp),
+                                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
                                         horizontalAlignment = Alignment.CenterHorizontally
                                     ) {
-                                        Icon(Icons.Default.Add, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(48.dp))
+                                        Icon(Icons.Default.Add, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Text("Import Files", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                                         Spacer(modifier = Modifier.height(16.dp))
-                                        Text("Import Files", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                                        Spacer(modifier = Modifier.height(32.dp))
                                         Row(
                                             modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                            horizontalArrangement = Arrangement.spacedBy(12.dp)
                                         ) {
                                             androidx.compose.material3.ElevatedCard(
                                                 onClick = {
                                                     showSystemMenu = false
                                                     massImportFolderLauncher.launch(null) 
                                                 },
-                                                modifier = Modifier.weight(1f).height(100.dp),
-                                                shape = RoundedCornerShape(16.dp)
+                                                modifier = Modifier.weight(1f).height(72.dp),
+                                                shape = RoundedCornerShape(12.dp)
                                             ) {
                                                 Column(modifier = Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                                                    Icon(Icons.Default.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                                                    Spacer(modifier = Modifier.height(8.dp))
-                                                    Text("Select Folder", fontWeight = FontWeight.Bold)
+                                                    Icon(Icons.Default.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
+                                                    Spacer(modifier = Modifier.height(6.dp))
+                                                    Text("Select Folder", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                                                 }
                                             }
                                             androidx.compose.material3.ElevatedCard(
@@ -516,17 +516,17 @@ fun BookShelfTab(
                                                     showSystemMenu = false
                                                     massImportFilesLauncher.launch(arrayOf("*/*")) 
                                                 },
-                                                modifier = Modifier.weight(1f).height(100.dp),
-                                                shape = RoundedCornerShape(16.dp)
+                                                modifier = Modifier.weight(1f).height(72.dp),
+                                                shape = RoundedCornerShape(12.dp)
                                             ) {
                                                 Column(modifier = Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                                                    Icon(Icons.Default.InsertDriveFile, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                                                    Spacer(modifier = Modifier.height(8.dp))
-                                                    Text("Select Files", fontWeight = FontWeight.Bold)
+                                                    Icon(Icons.Default.InsertDriveFile, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
+                                                    Spacer(modifier = Modifier.height(6.dp))
+                                                    Text("Select Files", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                                                 }
                                             }
                                         }
-                                        Spacer(modifier = Modifier.height(32.dp))
+                                        Spacer(modifier = Modifier.height(16.dp))
                                     }
                                 }
                             }

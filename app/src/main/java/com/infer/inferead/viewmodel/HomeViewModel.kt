@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
@@ -41,12 +42,24 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 val infeReadDir = java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), "infeRead")
                 if (infeReadDir.exists() && infeReadDir.isDirectory) {
-                    val existingFileNames = dao.getAllLibraryFiles().first().map { java.io.File(it.filePath).name }
+                    val existingFiles = dao.getAllLibraryFiles().first()
                     infeReadDir.listFiles()?.forEach { file ->
                         if (file.isFile) {
-                            if (!existingFileNames.contains(file.name)) {
-                                val ext = file.extension.lowercase()
-                                val isSupported = ext in listOf("pdf", "epub", "cbz", "cbr", "cb7", "txt", "doc", "docx", "md", "py", "c", "java", "js", "css", "jpg", "jpeg", "png", "webp", "heic", "heif", "bmp", "svg")
+                            val ext = file.extension.uppercase()
+                            val format = when (ext) {
+                                "PDF" -> "PDF"
+                                "MD", "PY", "C", "JAVA", "JS", "CSS" -> "CODING"
+                                "TXT", "DOC", "DOCX" -> "TXT"
+                                "JPG", "JPEG", "PNG", "WEBP", "SVG", "BMP", "HEIC", "HEIF" -> "IMAGE"
+                                "EPUB" -> "EPUB"
+                                "CBZ", "ZIP" -> "CBZ"
+                                "CBR", "RAR" -> "CBR"
+                                "CB7", "7Z" -> "CB7"
+                                else -> "UNKNOWN"
+                            }
+                            val isDuplicate = existingFiles.any { it.title == file.nameWithoutExtension && it.format == format }
+                            if (!isDuplicate) {
+                                val isSupported = ext.lowercase() in listOf("pdf", "epub", "cbz", "cbr", "cb7", "txt", "doc", "docx", "md", "py", "c", "java", "js", "css", "jpg", "jpeg", "png", "webp", "heic", "heif", "bmp", "svg")
                                 if (isSupported) {
                                     repository.linkFile(file.absolutePath)
                                 }
@@ -133,6 +146,37 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         return fileId?.toInt()
     }
 
+    /**
+     * Primary entry point for the + FAB and pendingUri (files shared into the app).
+     * Attempts to link via a persistent content:// URI (zero disk copy, survives file moves).
+     * Falls back to a full import (copy into sandbox) for cloud or non-persistable URIs.
+     * Shows a toast so the user can tell which path was taken.
+     */
+    fun linkOrImportFile(uri: Uri): Job = viewModelScope.launch(Dispatchers.IO) {
+        val app = getApplication<android.app.Application>()
+        val canPersist = try {
+            app.contentResolver.takePersistableUriPermission(
+                uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+            )
+            true
+        } catch (e: SecurityException) {
+            false
+        }
+
+        if (canPersist) {
+            withContext(Dispatchers.Main) {
+                android.widget.Toast.makeText(app, "Linking File…", android.widget.Toast.LENGTH_SHORT).show()
+            }
+            repository.linkFileFromUri(uri)
+        } else {
+            withContext(Dispatchers.Main) {
+                android.widget.Toast.makeText(app, "Importing File…", android.widget.Toast.LENGTH_SHORT).show()
+            }
+            repository.importFile(uri)
+        }
+    }
+
+
     fun massImportFolder(treeUri: Uri, context: android.content.Context, targetBookshelfId: Int?) {
         if (_isMassImporting.value) return
         _isMassImporting.value = true
@@ -187,15 +231,31 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 val documentFile = androidx.documentfile.provider.DocumentFile.fromTreeUri(context, treeUri)
                 if (documentFile != null && documentFile.isDirectory) {
-                    val existingFileNames = dao.getAllLibraryFiles().first().map { java.io.File(it.filePath).name }
+                    val existingFiles = dao.getAllLibraryFiles().first()
                     val filesToScan = mutableListOf<androidx.documentfile.provider.DocumentFile>()
                     
                     fun traverse(dir: androidx.documentfile.provider.DocumentFile) {
                         dir.listFiles().forEach { file ->
                             if (file.isDirectory) traverse(file)
-                            else if (file.isFile && file.name != null && !existingFileNames.contains(file.name) && 
-                                    selectedExtensions.contains(file.name!!.substringAfterLast(".", "").uppercase())) {
-                                filesToScan.add(file)
+                            else if (file.isFile && file.name != null) {
+                                val fileName = file.name!!
+                                val ext = fileName.substringAfterLast(".", "").uppercase()
+                                val nameWithoutExtension = fileName.substringBeforeLast(".")
+                                val format = when (ext) {
+                                    "PDF" -> "PDF"
+                                    "MD", "PY", "C", "JAVA", "JS", "CSS" -> "CODING"
+                                    "TXT", "DOC", "DOCX" -> "TXT"
+                                    "JPG", "JPEG", "PNG", "WEBP", "SVG", "BMP", "HEIC", "HEIF" -> "IMAGE"
+                                    "EPUB" -> "EPUB"
+                                    "CBZ", "ZIP" -> "CBZ"
+                                    "CBR", "RAR" -> "CBR"
+                                    "CB7", "7Z" -> "CB7"
+                                    else -> "UNKNOWN"
+                                }
+                                val isDuplicate = existingFiles.any { it.title == nameWithoutExtension && it.format == format }
+                                if (!isDuplicate && selectedExtensions.contains(ext)) {
+                                    filesToScan.add(file)
+                                }
                             }
                         }
                     }
@@ -235,7 +295,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         _massImportProgress.value = 0
         _massImportTotal.value = uris.size
         _isMassImportPaused.value = false
-        
+
         massImportJob = viewModelScope.launch(Dispatchers.IO) {
             try {
                 for ((index, uri) in uris.withIndex()) {
@@ -243,10 +303,44 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                         delay(500)
                     }
                     if (!isActive) break
-                    
-                    val importedId = repository.importFile(uri)?.toInt()
-                    if (importedId != null && targetBookshelfId != null) {
-                        repository.addFileToBookshelf(targetBookshelfId, importedId)
+
+                    // Try to link the file via persistent content:// URI first.
+                    // This avoids copying and survives file moves on device.
+                    val canPersist = try {
+                        getApplication<android.app.Application>().contentResolver
+                            .takePersistableUriPermission(
+                                uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                            )
+                        true
+                    } catch (e: SecurityException) {
+                        false
+                    }
+
+                    val fileId: Int?
+                    if (canPersist) {
+                        // Show "Linking File..." toast
+                        kotlinx.coroutines.withContext(Dispatchers.Main) {
+                            android.widget.Toast.makeText(
+                                getApplication(),
+                                "Linking File...",
+                                android.widget.Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                        fileId = repository.linkFileFromUri(uri)?.toInt()
+                    } else {
+                        // Fallback: cloud or inaccessible URIs — copy into sandbox
+                        kotlinx.coroutines.withContext(Dispatchers.Main) {
+                            android.widget.Toast.makeText(
+                                getApplication(),
+                                "Importing File...",
+                                android.widget.Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                        fileId = repository.importFile(uri)?.toInt()
+                    }
+
+                    if (fileId != null && targetBookshelfId != null) {
+                        repository.addFileToBookshelf(targetBookshelfId, fileId)
                     }
                     _massImportProgress.value = index + 1
                 }
@@ -942,6 +1036,30 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     fun updateBookshelfItemsOrder(items: List<com.infer.inferead.data.BookshelfItem>) {
         viewModelScope.launch {
             repository.updateBookshelfItemsOrder(items)
+        }
+    }
+
+    suspend fun getFileInfo(fileId: Int): Map<String, Any> {
+        return withContext(Dispatchers.IO) {
+            val file = dao.getLibraryFileById(fileId) ?: return@withContext emptyMap()
+            val annotations = dao.getAnnotations(fileId).firstOrNull() ?: emptyList()
+            
+            val hasHighlights = annotations.any { it.colorHex.isNotEmpty() }
+            val hasComments = annotations.any { it.textComment.isNotEmpty() }
+            val bookmarkCount = if (file.isBookmarked) 1 else 0
+            
+            mapOf(
+                "title" to file.title,
+                "format" to file.format,
+                "path" to file.filePath,
+                "addedAt" to file.addedAt,
+                "hasHighlights" to hasHighlights,
+                "hasComments" to hasComments,
+                "bookmarks" to bookmarkCount,
+                "isToRead" to file.isToRead,
+                "isFinished" to file.isFinished,
+                "fileSize" to java.io.File(file.filePath).length()
+            )
         }
     }
 }

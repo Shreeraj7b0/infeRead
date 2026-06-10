@@ -22,6 +22,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.infer.inferead.viewmodel.HomeViewModel
 import com.infer.inferead.ui.theme.ThemeManager
@@ -166,6 +168,7 @@ fun SettingsScreen(
     val defaultFileTypes = setOf("EPUB", "PDF", "CBZ", "CBR", "CB7", "TXT", "DOC", "DOCX", "MD", "PY", "C", "JAVA", "JS", "CSS", "JPG", "PNG", "WEBP")
     val selectedFileTypes = remember { mutableStateListOf(*prefs.getStringSet("selected_file_types", defaultFileTypes)?.toTypedArray() ?: defaultFileTypes.toTypedArray()) }
     var showFileTypesDialog by remember { mutableStateOf(false) }
+    var showImportedFilesDialog by remember { mutableStateOf(false) }
 
     val folderScanLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree()
@@ -587,6 +590,33 @@ fun SettingsScreen(
                             verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             Text(
+                                "Internal Sandbox", 
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                "Manage files that have been imported into the app.", 
+                                style = MaterialTheme.typography.labelSmall, 
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            OutlinedButton(
+                                onClick = { showImportedFilesDialog = true },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Icon(Icons.Default.FolderSpecial, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("View Imported Files")
+                            }
+                        }
+
+                        Divider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
                                 "Homescreen Widgets", 
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.SemiBold
@@ -990,6 +1020,270 @@ fun SettingsScreen(
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+
+    if (showImportedFilesDialog) {
+        var isGridView by remember { mutableStateOf(false) }
+        var selectedTabIndex by remember { mutableStateOf(0) }
+        val importedFiles = libraryFiles.filter { it.filePath.startsWith(context.filesDir.absolutePath + "/library") }
+        val linkedFiles = libraryFiles.filter { !it.filePath.startsWith(context.filesDir.absolutePath + "/library") }
+        var showInfoDialogFor by remember { mutableStateOf<Int?>(null) }
+        var fileInfo by remember { mutableStateOf<Map<String, Any>?>(null) }
+        var fileToDelete by remember { mutableStateOf<Int?>(null) }
+
+        LaunchedEffect(showInfoDialogFor) {
+            if (showInfoDialogFor != null) {
+                fileInfo = viewModel.getFileInfo(showInfoDialogFor!!)
+            } else {
+                fileInfo = null
+            }
+        }
+
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { showImportedFilesDialog = false },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                color = MaterialTheme.colorScheme.background
+            ) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    TopAppBar(
+                        title = { Text("File Manager") },
+                        navigationIcon = {
+                            IconButton(onClick = { showImportedFilesDialog = false }) {
+                                Icon(Icons.Default.Close, contentDescription = "Close")
+                            }
+                        },
+                        actions = {
+                            IconButton(onClick = { isGridView = !isGridView }) {
+                                Icon(
+                                    if (isGridView) Icons.Default.ViewList else Icons.Default.GridView,
+                                    contentDescription = "Toggle View"
+                                )
+                            }
+                        }
+                    )
+                    
+                    TabRow(selectedTabIndex = selectedTabIndex) {
+                        Tab(
+                            selected = selectedTabIndex == 0,
+                            onClick = { selectedTabIndex = 0 },
+                            text = { Text("Imported Files") }
+                        )
+                        Tab(
+                            selected = selectedTabIndex == 1,
+                            onClick = { selectedTabIndex = 1 },
+                            text = { Text("Linked Files") }
+                        )
+                    }
+
+                    val currentFiles = if (selectedTabIndex == 0) importedFiles else linkedFiles
+
+                    if (currentFiles.isEmpty()) {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text(if (selectedTabIndex == 0) "No internal files." else "No linked files.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    } else {
+                        val dateFormat = java.text.SimpleDateFormat("dd.MM.yy", java.util.Locale.getDefault())
+                        
+                        if (isGridView) {
+                            androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
+                                columns = androidx.compose.foundation.lazy.grid.GridCells.Adaptive(100.dp),
+                                contentPadding = PaddingValues(16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(16.dp),
+                                modifier = Modifier.fillMaxSize()
+                            ) {
+                                items(currentFiles.size) { index ->
+                                    val file = currentFiles[index]
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .pointerInput(Unit) {
+                                                detectTapGestures(
+                                                    onTap = { onOpenFile(file.id) },
+                                                    onLongPress = { showInfoDialogFor = file.id }
+                                                )
+                                            }
+                                    ) {
+                                        Box {
+                                            val shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+                                            Box(
+                                                modifier = Modifier
+                                                    .aspectRatio(0.7f)
+                                                    .clip(shape)
+                                                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                                            ) {
+                                                if (file.thumbnailUri != null) {
+                                                    coil.compose.AsyncImage(
+                                                        model = file.thumbnailUri,
+                                                        contentDescription = null,
+                                                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                                        modifier = Modifier.fillMaxSize()
+                                                    )
+                                                }
+                                            }
+                                            IconButton(
+                                                onClick = { fileToDelete = file.id },
+                                                modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).background(Color.Black.copy(alpha=0.5f), CircleShape).size(28.dp)
+                                            ) {
+                                                Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color.White, modifier = Modifier.size(16.dp))
+                                            }
+                                        }
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Text(
+                                            file.title,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis,
+                                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                        )
+                                        if (file.addedAt > 0) {
+                                            Text(
+                                                dateFormat.format(java.util.Date(file.addedAt)),
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            LazyColumn(
+                                contentPadding = PaddingValues(16.dp),
+                                modifier = Modifier.fillMaxSize()
+                            ) {
+                                items(currentFiles) { file ->
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(bottom = 16.dp)
+                                            .pointerInput(Unit) {
+                                                detectTapGestures(
+                                                    onTap = { onOpenFile(file.id) },
+                                                    onLongPress = { showInfoDialogFor = file.id }
+                                                )
+                                            },
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        val shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+                                        Box(
+                                            modifier = Modifier
+                                                .width(60.dp)
+                                                .aspectRatio(0.7f)
+                                                .clip(shape)
+                                                .background(MaterialTheme.colorScheme.surfaceVariant)
+                                        ) {
+                                            if (file.thumbnailUri != null) {
+                                                coil.compose.AsyncImage(
+                                                    model = file.thumbnailUri,
+                                                    contentDescription = null,
+                                                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                                    modifier = Modifier.fillMaxSize()
+                                                )
+                                            }
+                                        }
+                                        Spacer(modifier = Modifier.width(16.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                file.title,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                maxLines = 2,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text(
+                                                dateFormat.format(java.util.Date(file.addedAt)),
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                        IconButton(onClick = { fileToDelete = file.id }) {
+                                            Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                if (showInfoDialogFor != null && fileInfo != null) {
+                    AlertDialog(
+                        onDismissRequest = { showInfoDialogFor = null },
+                        title = { Text("File Info") },
+                        text = {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                val info = fileInfo!!
+                                Text("Name: ${info["title"]}")
+                                Text("Type: ${info["format"]}")
+                                val sizeBytes = (info["fileSize"] as? Long) ?: 0L
+                                val sizeMb = sizeBytes / (1024f * 1024f)
+                                Text("Size: ${String.format(java.util.Locale.US, "%.2f", sizeMb)} MB")
+                                val sdf = java.text.SimpleDateFormat("dd MMM yyyy, HH:mm", java.util.Locale.getDefault())
+                                Text("Date Added: ${sdf.format(java.util.Date((info["addedAt"] as? Long) ?: 0L))}")
+                                
+                                Divider(modifier = Modifier.padding(vertical = 4.dp))
+                                
+                                Text("Annotations:")
+                                Text("- Highlights: " + if ((info["hasHighlights"] as? Boolean) == true) "Yes" else "No")
+                                Text("- Comments: " + if ((info["hasComments"] as? Boolean) == true) "Yes" else "No")
+                                Text("- Bookmarks: ${info["bookmarks"]}")
+                                
+                                Divider(modifier = Modifier.padding(vertical = 4.dp))
+                                
+                                Text("Reading List: " + if ((info["isToRead"] as? Boolean) == true) "Yes" else "No")
+                                Text("Status: " + if ((info["isFinished"] as? Boolean) == true) "Finished" else "Unfinished")
+                            }
+                        },
+                        confirmButton = {
+                            Button(onClick = { showInfoDialogFor = null }) {
+                                Text("Close")
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(
+                                onClick = {
+                                    fileToDelete = showInfoDialogFor
+                                },
+                                colors = androidx.compose.material3.ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                            ) {
+                                Text("Delete File")
+                            }
+                        }
+                    )
+                }
+
+                if (fileToDelete != null) {
+                    AlertDialog(
+                        onDismissRequest = { fileToDelete = null },
+                        title = { Text("Delete File") },
+                        text = { Text("Are you sure you want to permanently delete this file?") },
+                        confirmButton = {
+                            TextButton(
+                                onClick = {
+                                    viewModel.deleteFile(fileToDelete!!)
+                                    if (showInfoDialogFor == fileToDelete) {
+                                        showInfoDialogFor = null
+                                    }
+                                    fileToDelete = null
+                                },
+                                colors = androidx.compose.material3.ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                            ) {
+                                Text("Delete")
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { fileToDelete = null }) {
+                                Text("No")
+                            }
+                        }
+                    )
                 }
             }
         }

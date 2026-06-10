@@ -18,9 +18,22 @@ import android.net.Uri
 @Composable
 fun AppNavigation(
     pendingUri: Uri? = null,
-    onUriHandled: () -> Unit = {}
+    widgetAction: String? = null,
+    widgetChecklistId: Int? = null,
+    onUriHandled: () -> Unit = {},
+    onWidgetActionHandled: () -> Unit = {}
 ) {
     val navController = rememberNavController()
+
+    androidx.compose.runtime.LaunchedEffect(widgetAction, widgetChecklistId) {
+        if (widgetAction == "com.infer.inferead.NEW_CHECKLIST") {
+            navController.navigate("home?newChecklist=true")
+            onWidgetActionHandled()
+        } else if (widgetAction == "com.infer.inferead.OPEN_CHECKLIST" && widgetChecklistId != null) {
+            navController.navigate("home?checklistId=$widgetChecklistId")
+            onWidgetActionHandled()
+        }
+    }
 
     NavHost(navController = navController, startDestination = "splash") {
         composable("splash") {
@@ -43,12 +56,17 @@ fun AppNavigation(
             )
         }
         composable(
-            route = "home?checklistId={checklistId}",
-            arguments = listOf(navArgument("checklistId") { type = NavType.IntType; defaultValue = -1 })
+            route = "home?checklistId={checklistId}&newChecklist={newChecklist}",
+            arguments = listOf(
+                navArgument("checklistId") { type = NavType.IntType; defaultValue = -1 },
+                navArgument("newChecklist") { type = NavType.BoolType; defaultValue = false }
+            )
         ) { backStackEntry ->
             val checklistId = backStackEntry.arguments?.getInt("checklistId") ?: -1
+            val newChecklist = backStackEntry.arguments?.getBoolean("newChecklist") ?: false
             HomeScreen(
                 initialChecklistId = if (checklistId == -1) null else checklistId,
+                initialNewChecklist = newChecklist,
                 pendingUri = pendingUri,
                 onUriHandled = onUriHandled,
                 onNavigateToReader = { fileId ->

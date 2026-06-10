@@ -237,14 +237,20 @@ fun PdfViewer(
     searchResults: List<com.infer.inferead.viewmodel.SearchResult>? = null,
     searchJumpIndex: com.infer.inferead.viewmodel.SearchResult? = null
 ) {
-    val file = File(filePath)
-    if (!file.exists()) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val parcelFileDescriptor = remember {
+        try {
+            if (filePath.startsWith("content://")) {
+                context.contentResolver.openFileDescriptor(android.net.Uri.parse(filePath), "r")
+            } else {
+                val file = File(filePath)
+                if (file.exists()) ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY) else null
+            }
+        } catch (e: Exception) { null }
+    }
+    if (parcelFileDescriptor == null) {
         Text("File not found")
         return
-    }
-
-    val parcelFileDescriptor = remember {
-        try { ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY) } catch (e: Exception) { null }
     }
     val pdfRenderer = remember {
         parcelFileDescriptor?.let {
@@ -711,7 +717,18 @@ fun TXTReader(
 
     androidx.compose.runtime.LaunchedEffect(filePath) {
         isLoading = true
-        val file = java.io.File(filePath)
+        val file = if (filePath.startsWith("content://")) {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                val uri = android.net.Uri.parse(filePath)
+                val cached = java.io.File(context.cacheDir, "linked_txt_${filePath.hashCode()}")
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    cached.outputStream().use { output -> input.copyTo(output) }
+                }
+                cached
+            }
+        } else {
+            java.io.File(filePath)
+        }
         loadedText = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             if (file.exists()) {
                 val ext = file.extension.lowercase()
@@ -1202,7 +1219,7 @@ fun ImageViewer(filePath: String, isNoir: Boolean = false, isNegative: Boolean =
             }
     ) {
         AsyncImage(
-            model = File(filePath),
+            model = if (filePath.startsWith("content://")) android.net.Uri.parse(filePath) else File(filePath),
             contentDescription = "Image",
             modifier = Modifier
                 .fillMaxSize()
@@ -1241,6 +1258,7 @@ fun PdfPagePreview(
     modifier: Modifier = Modifier
 ) {
     var previewBitmap by remember(filePath, pageIndex) { mutableStateOf<Bitmap?>(null) }
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     LaunchedEffect(filePath, pageIndex) {
         withContext(Dispatchers.IO) {
@@ -1248,9 +1266,13 @@ fun PdfPagePreview(
             var renderer: PdfRenderer? = null
             var page: PdfRenderer.Page? = null
             try {
-                val file = File(filePath)
-                if (file.exists()) {
-                    pfd = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
+                pfd = if (filePath.startsWith("content://")) {
+                    context.contentResolver.openFileDescriptor(android.net.Uri.parse(filePath), "r")
+                } else {
+                    val file = File(filePath)
+                    if (file.exists()) ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY) else null
+                }
+                if (pfd != null) {
                     renderer = PdfRenderer(pfd)
                     if (pageIndex in 0 until renderer.pageCount) {
                         page = renderer.openPage(pageIndex)
@@ -1370,13 +1392,12 @@ fun ComicArchiveViewer(
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
-    var images by remember { mutableStateOf<List<File>>(emptyList()) }
+    var images by remember { mutableStateOf<List<String>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
+    var archiveFile by remember { mutableStateOf<File?>(null) }
 
     LaunchedEffect(filePath) {
         isLoading = true
-        val extractDir = File(context.cacheDir, "comic_cache_${filePath.hashCode()}")
-        
         var tempFile: File? = null
         val pathForExtraction = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             var tempPath = filePath
@@ -1397,18 +1418,49 @@ fun ComicArchiveViewer(
             }
             tempPath
         }
-
-        val success = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            com.infer.inferead.utils.ArchiveExtractor.extractArchive(pathForExtraction, extractDir, format)
+        
+        archiveFile = File(pathForExtraction)
+        
+        val entries = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val list = mutableListOf<String>()
+            try {
+                if (format == "CBZ" || format == "EPUB") {
+                    java.util.zip.ZipFile(archiveFile).use { zip ->
+                        val e = zip.entries()
+                        while (e.hasMoreElements()) {
+                            val entry = e.nextElement()
+                            if (!entry.isDirectory && (entry.name.endsWith(".jpg", true) || entry.name.endsWith(".jpeg", true) || entry.name.endsWith(".png", true) || entry.name.endsWith(".webp", true))) {
+                                list.add(entry.name)
+                            }
+                        }
+                    }
+                } else if (format == "CBR") {
+                    com.github.junrar.Archive(archiveFile).use { archive ->
+                        var header = archive.nextFileHeader()
+                        while (header != null) {
+                            if (!header.isDirectory && (header.fileNameString.endsWith(".jpg", true) || header.fileNameString.endsWith(".jpeg", true) || header.fileNameString.endsWith(".png", true) || header.fileNameString.endsWith(".webp", true))) {
+                                list.add(header.fileNameString.trim())
+                            }
+                            header = archive.nextFileHeader()
+                        }
+                    }
+                } else if (format == "CB7") {
+                    org.apache.commons.compress.archivers.sevenz.SevenZFile(archiveFile).use { sevenZFile ->
+                        var entry = sevenZFile.nextEntry
+                        while (entry != null) {
+                            if (!entry.isDirectory && (entry.name.endsWith(".jpg", true) || entry.name.endsWith(".jpeg", true) || entry.name.endsWith(".png", true) || entry.name.endsWith(".webp", true))) {
+                                list.add(entry.name)
+                            }
+                            entry = sevenZFile.nextEntry
+                        }
+                    }
+                }
+            } catch (e: Exception) { e.printStackTrace() }
+            list.sorted()
         }
-        try { tempFile?.delete() } catch (e: Exception) {}
-
-        if (success) {
-            images = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                extractDir.walkTopDown().filter { it.isFile && (it.extension.equals("jpg", true) || it.extension.equals("jpeg", true) || it.extension.equals("png", true) || it.extension.equals("webp", true)) }.sortedBy { it.name }.toList()
-            }
-            onTotalPagesLoaded(images.size)
-        }
+        
+        images = entries
+        onTotalPagesLoaded(images.size)
         isLoading = false
     }
 
@@ -1466,6 +1518,47 @@ fun ComicArchiveViewer(
                 var scale by remember { mutableFloatStateOf(1f) }
                 var offset by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
                 
+                var pageBytes by remember { mutableStateOf<ByteArray?>(null) }
+                LaunchedEffect(images[page]) {
+                    if (archiveFile != null) {
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            if (format == "CBZ" || format == "EPUB") {
+                                pageBytes = com.infer.inferead.utils.ArchiveStreamer.getEntryBytes(archiveFile!!, images[page])
+                            } else if (format == "CBR") {
+                                try {
+                                    com.github.junrar.Archive(archiveFile!!).use { archive ->
+                                        var header = archive.nextFileHeader()
+                                        while (header != null) {
+                                            if (header.fileNameString.trim() == images[page]) {
+                                                val out = java.io.ByteArrayOutputStream()
+                                                archive.extractFile(header, out)
+                                                pageBytes = out.toByteArray()
+                                                break
+                                            }
+                                            header = archive.nextFileHeader()
+                                        }
+                                    }
+                                } catch (e: Exception) {}
+                            } else if (format == "CB7") {
+                                try {
+                                    org.apache.commons.compress.archivers.sevenz.SevenZFile(archiveFile!!).use { sevenZFile ->
+                                        var entry = sevenZFile.nextEntry
+                                        while (entry != null) {
+                                            if (entry.name == images[page]) {
+                                                val content = ByteArray(entry.size.toInt())
+                                                sevenZFile.read(content)
+                                                pageBytes = content
+                                                break
+                                            }
+                                            entry = sevenZFile.nextEntry
+                                        }
+                                    }
+                                } catch (e: Exception) {}
+                            }
+                        }
+                    }
+                }
+                
                 Box(modifier = Modifier
                     .fillMaxSize()
                     .zoomable { newScale, newOffset, zoomed ->
@@ -1501,7 +1594,7 @@ fun ComicArchiveViewer(
                     }
                 ) {
                     AsyncImage(
-                        model = images[page],
+                        model = pageBytes,
                         contentDescription = "Page ${page + 1}",
                         modifier = Modifier
                             .fillMaxSize()
@@ -2554,6 +2647,49 @@ fun EPUBReader(
                                     }
                                 ), "Android")
                                 webViewClient = object : android.webkit.WebViewClient() {
+                                    override fun shouldInterceptRequest(view: android.webkit.WebView?, request: android.webkit.WebResourceRequest?): android.webkit.WebResourceResponse? {
+                                        val url = request?.url?.toString() ?: return null
+                                        if (url.startsWith("file://")) {
+                                            val file = java.io.File(request.url.path!!)
+                                            if (!file.exists()) {
+                                                val extractDirPath = java.io.File(context.cacheDir, "epub_cache_${filePath.hashCode()}").absolutePath
+                                                val absolutePath = file.absolutePath
+                                                if (absolutePath.startsWith(extractDirPath)) {
+                                                    var relativePath = absolutePath.substring(extractDirPath.length)
+                                                    if (relativePath.startsWith("/") || relativePath.startsWith("\\")) {
+                                                        relativePath = relativePath.substring(1)
+                                                    }
+                                                    relativePath = relativePath.replace("\\", "/")
+                                                    
+                                                    // Try to decode URL encoded characters in the path
+                                                    relativePath = try { java.net.URLDecoder.decode(relativePath, "UTF-8") } catch(e: Exception) { relativePath }
+                                                    
+                                                    val stream = com.infer.inferead.utils.ArchiveStreamer.getEntryStream(java.io.File(filePath), relativePath)
+                                                    if (stream != null) {
+                                                        val mimeType = when (relativePath.substringAfterLast(".").lowercase()) {
+                                                            "jpg", "jpeg" -> "image/jpeg"
+                                                            "png" -> "image/png"
+                                                            "gif" -> "image/gif"
+                                                            "webp" -> "image/webp"
+                                                            "svg" -> "image/svg+xml"
+                                                            "css" -> "text/css"
+                                                            "js" -> "application/javascript"
+                                                            "mp3" -> "audio/mpeg"
+                                                            "mp4" -> "video/mp4"
+                                                            "ttf" -> "font/ttf"
+                                                            "otf" -> "font/otf"
+                                                            "woff" -> "font/woff"
+                                                            "woff2" -> "font/woff2"
+                                                            else -> "application/octet-stream"
+                                                        }
+                                                        return android.webkit.WebResourceResponse(mimeType, null, stream)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        return super.shouldInterceptRequest(view, request)
+                                    }
+
                                     override fun onPageFinished(view: android.webkit.WebView?, url: String?) {
                                         val tagData = view?.tag as? Pair<*, *>
                                         val anns = (tagData?.first as? String) ?: ""
@@ -2712,23 +2848,106 @@ fun EPUBReader(
 @Composable
 fun CbzPagePreview(filePath: String, pageIndex: Int, modifier: Modifier = Modifier) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    var imagePath by remember { mutableStateOf<String?>(null) }
+    var pageBytes by remember { mutableStateOf<ByteArray?>(null) }
     
     LaunchedEffect(filePath, pageIndex) {
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            val extractDir = java.io.File(context.cacheDir, "comic_cache_${filePath.hashCode()}")
-            if (extractDir.exists()) {
-                val images = extractDir.walkTopDown().filter { it.isFile && (it.extension.equals("jpg", true) || it.extension.equals("jpeg", true) || it.extension.equals("png", true) || it.extension.equals("webp", true)) }.sortedBy { it.name }.toList()
+            val archiveFile = if (filePath.startsWith("content://")) {
+                val uri = android.net.Uri.parse(filePath)
+                val cached = java.io.File(context.cacheDir, "linked_cbz_preview_${filePath.hashCode()}")
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    cached.outputStream().use { output -> input.copyTo(output) }
+                }
+                cached
+            } else {
+                java.io.File(filePath)
+            }
+            if (archiveFile.exists()) {
+                val format = when {
+                    filePath.endsWith(".cbz", true) || filePath.endsWith(".zip", true) || filePath.endsWith(".epub", true) -> "CBZ"
+                    filePath.endsWith(".cbr", true) || filePath.endsWith(".rar", true) -> "CBR"
+                    filePath.endsWith(".cb7", true) || filePath.endsWith(".7z", true) -> "CB7"
+                    else -> ""
+                }
+                val images = mutableListOf<String>()
+                try {
+                    if (format == "CBZ") {
+                        java.util.zip.ZipFile(archiveFile).use { zip ->
+                            val e = zip.entries()
+                            while (e.hasMoreElements()) {
+                                val entry = e.nextElement()
+                                if (!entry.isDirectory && (entry.name.endsWith(".jpg", true) || entry.name.endsWith(".jpeg", true) || entry.name.endsWith(".png", true) || entry.name.endsWith(".webp", true))) {
+                                    images.add(entry.name)
+                                }
+                            }
+                        }
+                    } else if (format == "CBR") {
+                        com.github.junrar.Archive(archiveFile).use { archive ->
+                            var header = archive.nextFileHeader()
+                            while (header != null) {
+                                if (!header.isDirectory && (header.fileNameString.endsWith(".jpg", true) || header.fileNameString.endsWith(".jpeg", true) || header.fileNameString.endsWith(".png", true) || header.fileNameString.endsWith(".webp", true))) {
+                                    images.add(header.fileNameString.trim())
+                                }
+                                header = archive.nextFileHeader()
+                            }
+                        }
+                    } else if (format == "CB7") {
+                        org.apache.commons.compress.archivers.sevenz.SevenZFile(archiveFile).use { sevenZFile ->
+                            var entry = sevenZFile.nextEntry
+                            while (entry != null) {
+                                if (!entry.isDirectory && (entry.name.endsWith(".jpg", true) || entry.name.endsWith(".jpeg", true) || entry.name.endsWith(".png", true) || entry.name.endsWith(".webp", true))) {
+                                    images.add(entry.name)
+                                }
+                                entry = sevenZFile.nextEntry
+                            }
+                        }
+                    }
+                } catch (e: Exception) {}
+                images.sort()
+                
                 if (pageIndex >= 0 && pageIndex < images.size) {
-                    imagePath = images[pageIndex].absolutePath
+                    val targetEntry = images[pageIndex]
+                    if (format == "CBZ") {
+                        pageBytes = com.infer.inferead.utils.ArchiveStreamer.getEntryBytes(archiveFile, targetEntry)
+                    } else if (format == "CBR") {
+                        try {
+                            com.github.junrar.Archive(archiveFile).use { archive ->
+                                var header = archive.nextFileHeader()
+                                while (header != null) {
+                                    if (header.fileNameString.trim() == targetEntry) {
+                                        val out = java.io.ByteArrayOutputStream()
+                                        archive.extractFile(header, out)
+                                        pageBytes = out.toByteArray()
+                                        break
+                                    }
+                                    header = archive.nextFileHeader()
+                                }
+                            }
+                        } catch (e: Exception) {}
+                    } else if (format == "CB7") {
+                        try {
+                            org.apache.commons.compress.archivers.sevenz.SevenZFile(archiveFile).use { sevenZFile ->
+                                var entry = sevenZFile.nextEntry
+                                while (entry != null) {
+                                    if (entry.name == targetEntry) {
+                                        val content = ByteArray(entry.size.toInt())
+                                        sevenZFile.read(content)
+                                        pageBytes = content
+                                        break
+                                    }
+                                    entry = sevenZFile.nextEntry
+                                }
+                            }
+                        } catch (e: Exception) {}
+                    }
                 }
             }
         }
     }
     
-    if (imagePath != null) {
+    if (pageBytes != null) {
         coil.compose.AsyncImage(
-            model = imagePath,
+            model = pageBytes,
             contentDescription = null,
             contentScale = androidx.compose.ui.layout.ContentScale.Crop,
             modifier = modifier
