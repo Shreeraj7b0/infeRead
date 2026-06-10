@@ -20,7 +20,7 @@ class FileRepository(private val context: Context, private val dao: InfeReadDao)
                 fileName.endsWith(".pdf", true) -> "PDF"
                 fileName.endsWith(".md", true) || fileName.endsWith(".py", true) || fileName.endsWith(".c", true) || fileName.endsWith(".java", true) || fileName.endsWith(".js", true) || fileName.endsWith(".css", true) -> "CODING"
                 fileName.endsWith(".txt", true) || fileName.endsWith(".doc", true) || fileName.endsWith(".docx", true) -> "TXT"
-                fileName.endsWith(".jpg", true) || fileName.endsWith(".jpeg", true) || fileName.endsWith(".png", true) || fileName.endsWith(".webp", true) || fileName.endsWith(".svg", true) -> "IMAGE"
+                fileName.endsWith(".jpg", true) || fileName.endsWith(".jpeg", true) || fileName.endsWith(".png", true) || fileName.endsWith(".heic", true) || fileName.endsWith(".heif", true) || fileName.endsWith(".webp", true) || fileName.endsWith(".svg", true) -> "IMAGE"
                 fileName.endsWith(".epub", true) -> "EPUB"
                 fileName.endsWith(".cbz", true) || fileName.endsWith(".zip", true) -> "CBZ"
                 fileName.endsWith(".cbr", true) || fileName.endsWith(".rar", true) -> "CBR"

@@ -106,6 +106,7 @@ fun BookShelfTab(
     // Add-file-to-shelf dialog
     var showAddFileDialog by remember { mutableStateOf(false) }
     var addFileTargetShelfId by remember { mutableStateOf<Int?>(null) }
+    var showPickerMenu by remember { mutableStateOf(false) }
     
     val massImportFolderLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
         contract = androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree()
@@ -343,7 +344,7 @@ fun BookShelfTab(
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 AsyncImage(
-                                    model = file.thumbnailUri,
+                                    model = file.thumbnailUri ?: if (file.format == "IMAGE" && file.filePath.startsWith("content://")) android.net.Uri.parse(file.filePath) else if (file.format == "IMAGE") java.io.File(file.filePath) else null,
                                     contentDescription = null,
                                     modifier = Modifier
                                         .size(60.dp, 85.dp)
@@ -362,7 +363,6 @@ fun BookShelfTab(
                     }
                     
                     item {
-                        var showPickerMenu by remember { mutableStateOf(false) }
                         Box(
                             modifier = Modifier
                                 .width(70.dp)
@@ -373,61 +373,65 @@ fun BookShelfTab(
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(Icons.Default.Add, contentDescription = "Add Files", modifier = Modifier.size(36.dp), tint = MaterialTheme.colorScheme.primary)
-                            
-                            if (showPickerMenu) {
-                                @OptIn(ExperimentalMaterial3Api::class)
-                                ModalBottomSheet(
-                                    onDismissRequest = { showPickerMenu = false },
-                                    sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-                                ) {
-                                    Column(
-                                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-                                        horizontalAlignment = Alignment.CenterHorizontally
-                                    ) {
-                                        Icon(Icons.Default.Add, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
-                                        Spacer(modifier = Modifier.height(8.dp))
-                                        Text("Import Files", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                                        Spacer(modifier = Modifier.height(16.dp))
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                                        ) {
-                                            androidx.compose.material3.ElevatedCard(
-                                                onClick = {
-                                                    showPickerMenu = false
-                                                    addFileTargetShelfId = null
-                                                    massImportFolderLauncher.launch(null) 
-                                                },
-                                                modifier = Modifier.weight(1f).height(72.dp),
-                                                shape = RoundedCornerShape(12.dp)
-                                            ) {
-                                                Column(modifier = Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                                                    Icon(Icons.Default.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
-                                                    Spacer(modifier = Modifier.height(6.dp))
-                                                    Text("Select Folder", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                                                }
-                                            }
-                                            androidx.compose.material3.ElevatedCard(
-                                                onClick = {
-                                                    showPickerMenu = false
-                                                    addFileTargetShelfId = null
-                                                    massImportFilesLauncher.launch(arrayOf("*/*")) 
-                                                },
-                                                modifier = Modifier.weight(1f).height(72.dp),
-                                                shape = RoundedCornerShape(12.dp)
-                                            ) {
-                                                Column(modifier = Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                                                    Icon(Icons.Default.InsertDriveFile, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
-                                                    Spacer(modifier = Modifier.height(6.dp))
-                                                    Text("Select Files", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                                                }
-                                            }
-                                        }
-                                        Spacer(modifier = Modifier.height(16.dp))
-                                    }
-                                }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── Import Files Dialog ──────────────────────────────────────────────
+        if (showPickerMenu) {
+            androidx.compose.ui.window.Dialog(onDismissRequest = { showPickerMenu = false }) {
+                androidx.compose.material3.Card(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    shape = RoundedCornerShape(24.dp),
+                    colors = androidx.compose.material3.CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surface
+                    ),
+                    elevation = androidx.compose.material3.CardDefaults.cardElevation(defaultElevation = 8.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text("Import Files", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Select a source to add files",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Spacer(modifier = Modifier.height(32.dp))
+                        
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            OutlinedButton(
+                                onClick = {
+                                    showPickerMenu = false
+                                    addFileTargetShelfId = null
+                                    massImportFolderLauncher.launch(null) 
+                                },
+                                modifier = Modifier.weight(1f).height(56.dp),
+                                shape = RoundedCornerShape(16.dp)
+                            ) {
+                                Text("Folder", style = MaterialTheme.typography.labelMedium)
+                            }
+                            Button(
+                                onClick = {
+                                    showPickerMenu = false
+                                    addFileTargetShelfId = null
+                                    massImportFilesLauncher.launch(arrayOf("*/*")) 
+                                },
+                                modifier = Modifier.weight(1f).height(56.dp),
+                                shape = RoundedCornerShape(16.dp)
+                            ) {
+                                Text("Files", style = MaterialTheme.typography.labelMedium, maxLines = 1, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                             }
                         }
+                        Spacer(modifier = Modifier.height(32.dp))
                     }
                 }
             }
@@ -480,53 +484,56 @@ fun BookShelfTab(
                                 Icon(Icons.Default.Add, contentDescription = "Add system files")
                             }
                             if (showSystemMenu) {
-                                @OptIn(ExperimentalMaterial3Api::class)
-                                ModalBottomSheet(
-                                    onDismissRequest = { showSystemMenu = false },
-                                    sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-                                ) {
-                                    Column(
-                                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-                                        horizontalAlignment = Alignment.CenterHorizontally
+                                androidx.compose.ui.window.Dialog(onDismissRequest = { showSystemMenu = false }) {
+                                    androidx.compose.material3.Card(
+                                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                        shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
+                                        colors = androidx.compose.material3.CardDefaults.cardColors(
+                                            containerColor = MaterialTheme.colorScheme.surface
+                                        ),
+                                        elevation = androidx.compose.material3.CardDefaults.cardElevation(defaultElevation = 8.dp)
                                     ) {
-                                        Icon(Icons.Default.Add, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
-                                        Spacer(modifier = Modifier.height(8.dp))
-                                        Text("Import Files", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                                        Spacer(modifier = Modifier.height(16.dp))
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                        Column(
+                                            modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally
                                         ) {
-                                            androidx.compose.material3.ElevatedCard(
-                                                onClick = {
-                                                    showSystemMenu = false
-                                                    massImportFolderLauncher.launch(null) 
-                                                },
-                                                modifier = Modifier.weight(1f).height(72.dp),
-                                                shape = RoundedCornerShape(12.dp)
-                                            ) {
-                                                Column(modifier = Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                                                    Icon(Icons.Default.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
-                                                    Spacer(modifier = Modifier.height(6.dp))
-                                                    Text("Select Folder", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.primary)
+                                            Spacer(modifier = Modifier.height(16.dp))
+                                            Text("Import Files", style = MaterialTheme.typography.headlineSmall, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            Text(
+                                                text = "Select a source to add files",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                maxLines = 1,
+                                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                            )
+                                            Spacer(modifier = Modifier.height(32.dp))
+                                            
+                                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                                OutlinedButton(
+                                                    onClick = {
+                                                        showSystemMenu = false
+                                                        massImportFolderLauncher.launch(null) 
+                                                    },
+                                                    modifier = Modifier.weight(1f).height(56.dp),
+                                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
+                                                ) {
+                                                    Text("Folder", style = MaterialTheme.typography.labelMedium)
+                                                }
+                                                Button(
+                                                    onClick = {
+                                                        showSystemMenu = false
+                                                        massImportFilesLauncher.launch(arrayOf("*/*")) 
+                                                    },
+                                                    modifier = Modifier.weight(1f).height(56.dp),
+                                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
+                                                ) {
+                                                    Text("Files", style = MaterialTheme.typography.labelMedium, maxLines = 1, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                                                 }
                                             }
-                                            androidx.compose.material3.ElevatedCard(
-                                                onClick = {
-                                                    showSystemMenu = false
-                                                    massImportFilesLauncher.launch(arrayOf("*/*")) 
-                                                },
-                                                modifier = Modifier.weight(1f).height(72.dp),
-                                                shape = RoundedCornerShape(12.dp)
-                                            ) {
-                                                Column(modifier = Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                                                    Icon(Icons.Default.InsertDriveFile, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
-                                                    Spacer(modifier = Modifier.height(6.dp))
-                                                    Text("Select Files", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                                                }
-                                            }
+                                            Spacer(modifier = Modifier.height(32.dp))
                                         }
-                                        Spacer(modifier = Modifier.height(16.dp))
                                     }
                                 }
                             }
@@ -545,7 +552,7 @@ fun BookShelfTab(
                                         headlineContent = { Text(file.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                                         leadingContent = {
                                             AsyncImage(
-                                                model = file.thumbnailUri,
+                                                model = file.thumbnailUri ?: if (file.format == "IMAGE" && file.filePath.startsWith("content://")) android.net.Uri.parse(file.filePath) else if (file.format == "IMAGE") java.io.File(file.filePath) else null,
                                                 contentDescription = null,
                                                 modifier = Modifier
                                                     .size(36.dp, 50.dp)
@@ -630,7 +637,7 @@ fun BookShelfTab(
                         modifier = Modifier.fillMaxSize()
                     ) {
                         AsyncImage(
-                            model = file.thumbnailUri,
+                            model = file.thumbnailUri ?: if (file.format == "IMAGE" && file.filePath.startsWith("content://")) android.net.Uri.parse(file.filePath) else if (file.format == "IMAGE") java.io.File(file.filePath) else null,
                             contentDescription = null,
                             modifier = Modifier
                                 .size(60.dp, 85.dp)
@@ -965,7 +972,7 @@ fun BookshelfRow(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 AsyncImage(
-                                    model = file.thumbnailUri,
+                                    model = file.thumbnailUri ?: if (file.format == "IMAGE" && file.filePath.startsWith("content://")) android.net.Uri.parse(file.filePath) else if (file.format == "IMAGE") java.io.File(file.filePath) else null,
                                     contentDescription = null,
                                     modifier = Modifier
                                         .size(34.dp, 48.dp)
@@ -1039,7 +1046,7 @@ fun BookshelfFileItem(
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             AsyncImage(
-                model = file.thumbnailUri,
+                model = file.thumbnailUri ?: if (file.format == "IMAGE" && file.filePath.startsWith("content://")) android.net.Uri.parse(file.filePath) else if (file.format == "IMAGE") java.io.File(file.filePath) else null,
                 contentDescription = null,
                 modifier = Modifier
                     .size(60.dp, 85.dp)

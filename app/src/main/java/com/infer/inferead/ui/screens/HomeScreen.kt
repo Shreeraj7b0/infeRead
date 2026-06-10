@@ -189,6 +189,7 @@ fun HomeScreen(
     var dragOffsetY by remember { mutableStateOf(0f) }
 
     var renamingFile by remember { mutableStateOf<com.infer.inferead.data.LibraryFile?>(null) }
+    var fileToDelete by remember { mutableStateOf<com.infer.inferead.data.LibraryFile?>(null) }
     
     var searchQuery by remember { mutableStateOf("") }
     var searchExpanded by remember { mutableStateOf(false) }
@@ -1885,9 +1886,9 @@ fun HomeScreen(
                                                                 .border(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f), RoundedCornerShape(12.dp)),
                                                             contentAlignment = Alignment.Center
                                                         ) {
-                                                            if (file.thumbnailUri != null) {
+                                                            if (file.thumbnailUri != null || file.format == "IMAGE") {
                                                                 AsyncImage(
-                                                                    model = file.thumbnailUri,
+                                                                    model = file.thumbnailUri ?: if (file.format == "IMAGE" && file.filePath.startsWith("content://")) android.net.Uri.parse(file.filePath) else if (file.format == "IMAGE") java.io.File(file.filePath) else null,
                                                                     contentDescription = "Thumbnail",
                                                                     modifier = Modifier.fillMaxSize(),
                                                                     contentScale = ContentScale.Crop
@@ -2236,7 +2237,7 @@ fun HomeScreen(
                         if (pagerState.currentPage == 0) {
                             FloatingActionButton(
                                 onClick = { 
-                                    filePickerLauncher.launch(arrayOf("application/pdf", "application/epub+zip", "text/plain", "image/png", "image/jpeg", "image/webp", "image/bmp", "application/rar", "application/x-rar-compressed", "application/zip", "application/x-cbz", "application/x-cbr", "application/x-7z-compressed"))
+                                    filePickerLauncher.launch(arrayOf("application/pdf", "application/epub+zip", "text/plain", "image/png", "image/jpeg", "image/webp", "image/bmp", "image/heic", "image/heif", "application/rar", "application/x-rar-compressed", "application/zip", "application/x-cbz", "application/x-cbr", "application/x-7z-compressed"))
                                 },
                                 modifier = Modifier.size(48.dp).bounceClick(),
                                 containerColor = MaterialTheme.colorScheme.primary,
@@ -2290,6 +2291,35 @@ fun HomeScreen(
             },
             dismissButton = {
                 TextButton(onClick = { renamingFile = null }) { Text("Cancel") }
+            }
+        )
+    }
+
+    if (fileToDelete != null) {
+        val file = fileToDelete!!
+        val isLinked = !file.filePath.startsWith(context.filesDir.absolutePath + "/library")
+        AlertDialog(
+            onDismissRequest = { fileToDelete = null },
+            title = { Text(if (isLinked) "Remove Linked File" else "Delete File") },
+            text = { 
+                Text(
+                    if (isLinked) "Are you sure you want to remove this file from your library? The original file will remain on your device."
+                    else "Are you sure you want to permanently delete this file from the app's internal storage?"
+                ) 
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.deleteFile(file.id)
+                        fileToDelete = null
+                    },
+                    colors = androidx.compose.material3.ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { fileToDelete = null }) { Text("Cancel") }
             }
         )
     }
@@ -2387,7 +2417,7 @@ fun HomeScreen(
                     }
 
                     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { 
-                        viewModel.deleteFile(contextMenuFile!!.id)
+                        fileToDelete = contextMenuFile
                         contextMenuFile = null; contextMenuFileShelfId = null
                     }.padding(8.dp)) {
                         Box(modifier = Modifier.size(48.dp).background(MaterialTheme.colorScheme.errorContainer, CircleShape), contentAlignment = Alignment.Center) {

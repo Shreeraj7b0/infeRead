@@ -453,7 +453,9 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     fun addChecklistItem(checklistId: Int, title: String) {
         if (title.isBlank()) return
         viewModelScope.launch {
-            dao.insertChecklistItem(ChecklistItem(checklistId = checklistId, title = title.trim()))
+            val items = dao.getChecklistItems(checklistId).first()
+            val minSortOrder = items.minOfOrNull { it.sortOrder } ?: 0
+            dao.insertChecklistItem(ChecklistItem(checklistId = checklistId, title = title.trim(), sortOrder = minSortOrder - 1))
         }
     }
 

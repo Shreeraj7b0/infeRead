@@ -941,9 +941,9 @@ fun SettingsScreen(
                                                 .clip(shape)
                                                 .background(MaterialTheme.colorScheme.surfaceVariant)
                                         ) {
-                                            if (file.thumbnailUri != null) {
+                                            if (file.thumbnailUri != null || file.format == "IMAGE") {
                                                 coil.compose.AsyncImage(
-                                                    model = file.thumbnailUri,
+                                                    model = file.thumbnailUri ?: if (file.format == "IMAGE" && file.filePath.startsWith("content://")) android.net.Uri.parse(file.filePath) else if (file.format == "IMAGE") java.io.File(file.filePath) else null,
                                                     contentDescription = null,
                                                     contentScale = androidx.compose.ui.layout.ContentScale.Crop,
                                                     modifier = Modifier.fillMaxSize()
@@ -989,9 +989,9 @@ fun SettingsScreen(
                                                 .clip(shape)
                                                 .background(MaterialTheme.colorScheme.surfaceVariant)
                                         ) {
-                                            if (file.thumbnailUri != null) {
+                                            if (file.thumbnailUri != null || file.format == "IMAGE") {
                                                 coil.compose.AsyncImage(
-                                                    model = file.thumbnailUri,
+                                                    model = file.thumbnailUri ?: if (file.format == "IMAGE" && file.filePath.startsWith("content://")) android.net.Uri.parse(file.filePath) else if (file.format == "IMAGE") java.io.File(file.filePath) else null,
                                                     contentDescription = null,
                                                     contentScale = androidx.compose.ui.layout.ContentScale.Crop,
                                                     modifier = Modifier.fillMaxSize()
@@ -1119,9 +1119,9 @@ fun SettingsScreen(
                                                     .clip(shape)
                                                     .background(MaterialTheme.colorScheme.surfaceVariant)
                                             ) {
-                                                if (file.thumbnailUri != null) {
+                                                if (file.thumbnailUri != null || file.format == "IMAGE") {
                                                     coil.compose.AsyncImage(
-                                                        model = file.thumbnailUri,
+                                                        model = file.thumbnailUri ?: if (file.format == "IMAGE" && file.filePath.startsWith("content://")) android.net.Uri.parse(file.filePath) else if (file.format == "IMAGE") java.io.File(file.filePath) else null,
                                                         contentDescription = null,
                                                         contentScale = androidx.compose.ui.layout.ContentScale.Crop,
                                                         modifier = Modifier.fillMaxSize()
@@ -1179,9 +1179,9 @@ fun SettingsScreen(
                                                 .clip(shape)
                                                 .background(MaterialTheme.colorScheme.surfaceVariant)
                                         ) {
-                                            if (file.thumbnailUri != null) {
+                                            if (file.thumbnailUri != null || file.format == "IMAGE") {
                                                 coil.compose.AsyncImage(
-                                                    model = file.thumbnailUri,
+                                                    model = file.thumbnailUri ?: if (file.format == "IMAGE" && file.filePath.startsWith("content://")) android.net.Uri.parse(file.filePath) else if (file.format == "IMAGE") java.io.File(file.filePath) else null,
                                                     contentDescription = null,
                                                     contentScale = androidx.compose.ui.layout.ContentScale.Crop,
                                                     modifier = Modifier.fillMaxSize()
@@ -1260,10 +1260,16 @@ fun SettingsScreen(
                 }
 
                 if (fileToDelete != null) {
+                    val isLinked = linkedFiles.any { it.id == fileToDelete }
                     AlertDialog(
                         onDismissRequest = { fileToDelete = null },
-                        title = { Text("Delete File") },
-                        text = { Text("Are you sure you want to permanently delete this file?") },
+                        title = { Text(if (isLinked) "Remove Linked File" else "Delete File") },
+                        text = { 
+                            Text(
+                                if (isLinked) "Are you sure you want to remove this file from your library? The original file will remain on your device."
+                                else "Are you sure you want to permanently delete this file from the app's internal storage?"
+                            ) 
+                        },
                         confirmButton = {
                             TextButton(
                                 onClick = {
