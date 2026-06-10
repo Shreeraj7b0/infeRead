@@ -40,34 +40,34 @@ fun SplashScreen(onNavigateToAuth: () -> Unit) {
         launch {
             iconScale.animateTo(
                 targetValue = 1f,
-                animationSpec = tween(durationMillis = (animationDuration * 0.4).toInt(), easing = FastOutSlowInEasing)
+                animationSpec = spring(dampingRatio = 0.6f, stiffness = 400f)
             )
         }
         
         launch {
             textOffsetY.animateTo(
                 targetValue = 0f,
-                animationSpec = tween(durationMillis = (animationDuration * 0.4).toInt(), easing = FastOutSlowInEasing)
+                animationSpec = spring(dampingRatio = 0.65f, stiffness = 300f)
             )
         }
         textAlpha.animateTo(
             targetValue = 1f,
-            animationSpec = tween(durationMillis = (animationDuration * 0.4).toInt(), easing = LinearEasing)
+            animationSpec = tween(durationMillis = (animationDuration * 0.4).toInt(), easing = LinearOutSlowInEasing)
         )
         
-        delay((animationDuration * 0.1).toLong())
+        delay((animationDuration * 0.2).toLong())
 
         val targetScale = if (isFirstLaunch) 8f else 3f
         
         launch {
             globalScale.animateTo(
                 targetValue = targetScale,
-                animationSpec = tween(durationMillis = (animationDuration * 0.2).toInt(), easing = FastOutLinearInEasing)
+                animationSpec = tween(durationMillis = (animationDuration * 0.3).toInt(), easing = FastOutLinearInEasing)
             )
         }
         globalAlpha.animateTo(
             targetValue = 0f,
-            animationSpec = tween(durationMillis = (animationDuration * 0.2).toInt(), easing = FastOutLinearInEasing)
+            animationSpec = tween(durationMillis = (animationDuration * 0.25).toInt(), easing = FastOutLinearInEasing)
         )
         
         if (isFirstLaunch) {
