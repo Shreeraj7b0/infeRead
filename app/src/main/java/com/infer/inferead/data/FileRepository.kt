@@ -82,6 +82,8 @@ class FileRepository(private val context: Context, private val dao: InfeReadDao)
                         }
                         autoThumbnailUri = thumbFile.absolutePath
                     }
+                } else if (format == "CBZ" || format == "CBR" || format == "CB7") {
+                    autoThumbnailUri = extractComicThumbnail(permanentFile, format)
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -268,104 +270,7 @@ class FileRepository(private val context: Context, private val dao: InfeReadDao)
                         extractDir.deleteRecursively()
                     }
                 } else if (format == "CBZ" || format == "CBR" || format == "CB7") {
-                    val images = mutableListOf<String>()
-                    try {
-                        if (format == "CBZ") {
-                            java.util.zip.ZipFile(targetFile).use { zip ->
-                                val e = zip.entries()
-                                while (e.hasMoreElements()) {
-                                    val entry = e.nextElement()
-                                    if (!entry.isDirectory && (entry.name.endsWith(".jpg", true) || entry.name.endsWith(".jpeg", true) || entry.name.endsWith(".png", true) || entry.name.endsWith(".webp", true))) {
-                                        images.add(entry.name)
-                                    }
-                                }
-                            }
-                        } else if (format == "CBR") {
-                            com.github.junrar.Archive(targetFile).use { archive ->
-                                var header = archive.nextFileHeader()
-                                while (header != null) {
-                                    if (!header.isDirectory && (header.fileNameString.endsWith(".jpg", true) || header.fileNameString.endsWith(".jpeg", true) || header.fileNameString.endsWith(".png", true) || header.fileNameString.endsWith(".webp", true))) {
-                                        images.add(header.fileNameString.trim())
-                                    }
-                                    header = archive.nextFileHeader()
-                                }
-                            }
-                        } else if (format == "CB7") {
-                            org.apache.commons.compress.archivers.sevenz.SevenZFile(targetFile).use { sevenZFile ->
-                                var entry = sevenZFile.nextEntry
-                                while (entry != null) {
-                                    if (!entry.isDirectory && (entry.name.endsWith(".jpg", true) || entry.name.endsWith(".jpeg", true) || entry.name.endsWith(".png", true) || entry.name.endsWith(".webp", true))) {
-                                        images.add(entry.name)
-                                    }
-                                    entry = sevenZFile.nextEntry
-                                }
-                            }
-                        }
-                    } catch (e: Exception) {}
-                    images.sort()
-                    
-                    if (images.isNotEmpty()) {
-                        for (image in images) {
-                            var bytes: ByteArray? = null
-                            if (format == "CBZ") {
-                                bytes = com.infer.inferead.utils.ArchiveStreamer.getEntryBytes(targetFile, image)
-                            } else if (format == "CBR") {
-                                try {
-                                    com.github.junrar.Archive(targetFile).use { archive ->
-                                        var header = archive.nextFileHeader()
-                                        while (header != null) {
-                                            if (header.fileNameString.trim() == image) {
-                                                val out = java.io.ByteArrayOutputStream()
-                                                archive.extractFile(header, out)
-                                                bytes = out.toByteArray()
-                                                break
-                                            }
-                                            header = archive.nextFileHeader()
-                                        }
-                                    }
-                                } catch (e: Exception) {}
-                            } else if (format == "CB7") {
-                                try {
-                                    org.apache.commons.compress.archivers.sevenz.SevenZFile(targetFile).use { sevenZFile ->
-                                        var entry = sevenZFile.nextEntry
-                                        while (entry != null) {
-                                            if (entry.name == image) {
-                                                val content = ByteArray(entry.size.toInt())
-                                                sevenZFile.read(content)
-                                                bytes = content
-                                                break
-                                            }
-                                            entry = sevenZFile.nextEntry
-                                        }
-                                    }
-                                } catch (e: Exception) {}
-                            }
-                            
-                            val finalBytes = bytes
-                            if (finalBytes != null) {
-                                val thumbDir = File(context.filesDir, "thumbnails")
-                                if (!thumbDir.exists()) thumbDir.mkdirs()
-                                val thumbFile = File(thumbDir, "thumb_${System.currentTimeMillis()}.jpg")
-                                
-                                val options = android.graphics.BitmapFactory.Options()
-                                options.inJustDecodeBounds = true
-                                android.graphics.BitmapFactory.decodeByteArray(finalBytes, 0, finalBytes.size, options)
-                                
-                                if (options.outWidth > 0 && options.outHeight > 0) {
-                                    options.inSampleSize = calculateInSampleSize(options, 300, 400)
-                                    options.inJustDecodeBounds = false
-                                    val bitmap = android.graphics.BitmapFactory.decodeByteArray(finalBytes, 0, finalBytes.size, options)
-                                    if (bitmap != null) {
-                                        FileOutputStream(thumbFile).use { out ->
-                                            bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 80, out)
-                                        }
-                                        autoThumbnailUri = thumbFile.absolutePath
-                                        break // Successfully created thumbnail
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    autoThumbnailUri = extractComicThumbnail(targetFile, format)
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -545,6 +450,13 @@ class FileRepository(private val context: Context, private val dao: InfeReadDao)
                             autoThumbnailUri = thumbFile.absolutePath
                         }
                     }
+                } else if (format == "CBZ" || format == "CBR" || format == "CB7") {
+                    val tempComic = File(context.cacheDir, "tmp_link_${System.currentTimeMillis()}_comic")
+                    contentResolver.openInputStream(uri)?.use { input ->
+                        FileOutputStream(tempComic).use { out -> input.copyTo(out) }
+                    }
+                    autoThumbnailUri = extractComicThumbnail(tempComic, format)
+                    tempComic.delete()
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -685,37 +597,8 @@ class FileRepository(private val context: Context, private val dao: InfeReadDao)
                     } finally {
                         extractDir.deleteRecursively()
                     }
-                } else {
-                    val extractDir = File(context.cacheDir, "comic_${System.currentTimeMillis()}")
-                    try {
-                        if (com.infer.inferead.utils.ArchiveExtractor.extractArchive(permanentFile.absolutePath, extractDir, format)) {
-                            val images = extractDir.walkTopDown().filter { it.isFile && (it.extension.equals("jpg", true) || it.extension.equals("jpeg", true) || it.extension.equals("png", true) || it.extension.equals("webp", true)) }.sortedBy { it.name }.toList()
-                            if (images.isNotEmpty()) {
-                                val coverImagePath = images.first().absolutePath
-                                val thumbDir = File(context.filesDir, "thumbnails")
-                                if (!thumbDir.exists()) thumbDir.mkdirs()
-                                val thumbFile = File(thumbDir, "thumb_${System.currentTimeMillis()}.jpg")
-                                
-                                val options = android.graphics.BitmapFactory.Options()
-                                options.inJustDecodeBounds = true
-                                android.graphics.BitmapFactory.decodeFile(coverImagePath, options)
-                                
-                                if (options.outWidth > 0 && options.outHeight > 0) {
-                                    options.inSampleSize = calculateInSampleSize(options, 300, 400)
-                                    options.inJustDecodeBounds = false
-                                    val bitmap = android.graphics.BitmapFactory.decodeFile(coverImagePath, options)
-                                    if (bitmap != null) {
-                                        FileOutputStream(thumbFile).use { out ->
-                                            bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 80, out)
-                                        }
-                                        autoThumbnailUri = thumbFile.absolutePath
-                                    }
-                                }
-                            }
-                        }
-                    } finally {
-                        extractDir.deleteRecursively()
-                    }
+                } else if (format == "CBZ" || format == "CBR" || format == "CB7") {
+                    autoThumbnailUri = extractComicThumbnail(permanentFile, format)
                 }
             }
         } catch (e: Exception) {
@@ -739,6 +622,107 @@ class FileRepository(private val context: Context, private val dao: InfeReadDao)
     suspend fun logReadingSession(durationMinutes: Int) = withContext(Dispatchers.IO) {
         val session = ReadingSession(date = System.currentTimeMillis(), durationMinutes = durationMinutes)
         dao.insertReadingSession(session)
+    }
+
+    private fun extractComicThumbnail(targetFile: File, format: String): String? {
+        val images = mutableListOf<String>()
+        try {
+            if (format == "CBZ") {
+                java.util.zip.ZipFile(targetFile).use { zip ->
+                    val e = zip.entries()
+                    while (e.hasMoreElements()) {
+                        val entry = e.nextElement()
+                        if (!entry.isDirectory && (entry.name.endsWith(".jpg", true) || entry.name.endsWith(".jpeg", true) || entry.name.endsWith(".png", true) || entry.name.endsWith(".webp", true))) {
+                            images.add(entry.name)
+                        }
+                    }
+                }
+            } else if (format == "CBR") {
+                com.github.junrar.Archive(targetFile).use { archive ->
+                    var header = archive.nextFileHeader()
+                    while (header != null) {
+                        if (!header.isDirectory && (header.fileNameString.endsWith(".jpg", true) || header.fileNameString.endsWith(".jpeg", true) || header.fileNameString.endsWith(".png", true) || header.fileNameString.endsWith(".webp", true))) {
+                            images.add(header.fileNameString.trim())
+                        }
+                        header = archive.nextFileHeader()
+                    }
+                }
+            } else if (format == "CB7") {
+                org.apache.commons.compress.archivers.sevenz.SevenZFile(targetFile).use { sevenZFile ->
+                    var entry = sevenZFile.nextEntry
+                    while (entry != null) {
+                        if (!entry.isDirectory && (entry.name.endsWith(".jpg", true) || entry.name.endsWith(".jpeg", true) || entry.name.endsWith(".png", true) || entry.name.endsWith(".webp", true))) {
+                            images.add(entry.name)
+                        }
+                        entry = sevenZFile.nextEntry
+                    }
+                }
+            }
+        } catch (e: Exception) {}
+        images.sort()
+        
+        if (images.isNotEmpty()) {
+            for (image in images) {
+                var bytes: ByteArray? = null
+                if (format == "CBZ") {
+                    bytes = com.infer.inferead.utils.ArchiveStreamer.getEntryBytes(targetFile, image)
+                } else if (format == "CBR") {
+                    try {
+                        com.github.junrar.Archive(targetFile).use { archive ->
+                            var header = archive.nextFileHeader()
+                            while (header != null) {
+                                if (header.fileNameString.trim() == image) {
+                                    val out = java.io.ByteArrayOutputStream()
+                                    archive.extractFile(header, out)
+                                    bytes = out.toByteArray()
+                                    break
+                                }
+                                header = archive.nextFileHeader()
+                            }
+                        }
+                    } catch (e: Exception) {}
+                } else if (format == "CB7") {
+                    try {
+                        org.apache.commons.compress.archivers.sevenz.SevenZFile(targetFile).use { sevenZFile ->
+                            var entry = sevenZFile.nextEntry
+                            while (entry != null) {
+                                if (entry.name == image) {
+                                    val content = ByteArray(entry.size.toInt())
+                                    sevenZFile.read(content)
+                                    bytes = content
+                                    break
+                                }
+                                entry = sevenZFile.nextEntry
+                            }
+                        }
+                    } catch (e: Exception) {}
+                }
+                
+                val finalBytes = bytes
+                if (finalBytes != null) {
+                    val thumbDir = File(context.filesDir, "thumbnails")
+                    if (!thumbDir.exists()) thumbDir.mkdirs()
+                    val thumbFile = File(thumbDir, "thumb_${System.currentTimeMillis()}.jpg")
+                    
+                    val options = android.graphics.BitmapFactory.Options()
+                    options.inJustDecodeBounds = true
+                    android.graphics.BitmapFactory.decodeByteArray(finalBytes, 0, finalBytes.size, options)
+                    
+                    if (options.outWidth > 0 && options.outHeight > 0) {
+                        options.inSampleSize = calculateInSampleSize(options, 300, 400)
+                        options.inJustDecodeBounds = false
+                        val bitmap = android.graphics.BitmapFactory.decodeByteArray(finalBytes, 0, finalBytes.size, options)
+                        if (bitmap != null) {
+                            FileOutputStream(thumbFile).use { out ->
+                                bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 80, out)
+                            }
+                            return thumbFile.absolutePath
+                        }
+                    }
+                }
+            }
+        }
+        return null
     }
 
     private fun calculateInSampleSize(options: android.graphics.BitmapFactory.Options, reqWidth: Int, reqHeight: Int): Int {

@@ -289,6 +289,129 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * Scan a folder by direct filesystem path (requires MANAGE_EXTERNAL_STORAGE on Android 11+).
+     * This bypasses SAF restrictions on protected directories like Downloads, Documents, etc.
+     */
+    fun scanFolderForNewFilesByPath(folderPath: String, selectedExtensions: List<String>) {
+        if (_isMassImporting.value) return
+        _isMassImporting.value = true
+        _massImportProgress.value = 0
+        _isMassImportPaused.value = false
+
+        massImportJob = viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val rootDir = java.io.File(folderPath)
+                if (!rootDir.exists() || !rootDir.isDirectory) {
+                    withContext(Dispatchers.Main) {
+                        android.widget.Toast.makeText(
+                            getApplication(),
+                            "Folder not found: $folderPath",
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                    return@launch
+                }
+
+                val existingFiles = dao.getAllLibraryFiles().first()
+                val filesToLink = mutableListOf<java.io.File>()
+
+                fun traverse(dir: java.io.File) {
+                    dir.listFiles()?.forEach { file ->
+                        if (file.isDirectory) traverse(file)
+                        else if (file.isFile) {
+                            val ext = file.extension.uppercase()
+                            val nameWithoutExtension = file.nameWithoutExtension
+                            val format = when (ext) {
+                                "PDF" -> "PDF"
+                                "MD", "PY", "C", "JAVA", "JS", "CSS" -> "CODING"
+                                "TXT", "DOC", "DOCX" -> "TXT"
+                                "JPG", "JPEG", "PNG", "WEBP", "SVG", "BMP", "HEIC", "HEIF" -> "IMAGE"
+                                "EPUB" -> "EPUB"
+                                "CBZ", "ZIP" -> "CBZ"
+                                "CBR", "RAR" -> "CBR"
+                                "CB7", "7Z" -> "CB7"
+                                else -> "UNKNOWN"
+                            }
+                            val isDuplicate = existingFiles.any { it.title == nameWithoutExtension && it.format == format }
+                            if (!isDuplicate && selectedExtensions.contains(ext)) {
+                                filesToLink.add(file)
+                            }
+                        }
+                    }
+                }
+                traverse(rootDir)
+
+                _massImportTotal.value = filesToLink.size
+                for ((index, file) in filesToLink.withIndex()) {
+                    while (_isMassImportPaused.value && isActive) {
+                        delay(500)
+                    }
+                    if (!isActive) break
+
+                    repository.linkFile(file.absolutePath)
+                    _massImportProgress.value = index + 1
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                _isMassImporting.value = false
+            }
+        }
+    }
+
+    /**
+     * Mass import all files from a folder by direct filesystem path (requires MANAGE_EXTERNAL_STORAGE).
+     * Used by BookShelfTab for folder import into a bookshelf.
+     */
+    fun massImportFolderByPath(folderPath: String, targetBookshelfId: Int?) {
+        if (_isMassImporting.value) return
+        _isMassImporting.value = true
+        _massImportProgress.value = 0
+        _isMassImportPaused.value = false
+
+        massImportJob = viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val rootDir = java.io.File(folderPath)
+                if (!rootDir.exists() || !rootDir.isDirectory) {
+                    withContext(Dispatchers.Main) {
+                        android.widget.Toast.makeText(
+                            getApplication(),
+                            "Folder not found: $folderPath",
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                    return@launch
+                }
+
+                val files = rootDir.listFiles()?.filter { it.isFile } ?: emptyList()
+                _massImportTotal.value = files.size
+
+                for ((index, file) in files.withIndex()) {
+                    while (_isMassImportPaused.value && isActive) {
+                        delay(500)
+                    }
+                    if (!isActive) break
+
+                    val ext = file.extension.lowercase()
+                    val isSupported = ext in listOf("pdf", "epub", "cbz", "cbr", "cb7", "txt", "doc", "docx",
+                        "md", "py", "c", "java", "js", "css", "jpg", "jpeg", "png", "webp", "heic", "heif", "bmp", "svg")
+                    if (isSupported) {
+                        val linkedId = repository.linkFile(file.absolutePath)
+                        if (linkedId != null && targetBookshelfId != null) {
+                            repository.addFileToBookshelf(targetBookshelfId, linkedId.toInt())
+                        }
+                    }
+                    _massImportProgress.value = index + 1
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                _isMassImporting.value = false
+            }
+        }
+    }
+
     fun massImportFiles(uris: List<Uri>, targetBookshelfId: Int?) {
         if (_isMassImporting.value) return
         _isMassImporting.value = true

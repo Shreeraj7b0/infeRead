@@ -235,7 +235,7 @@ fun PdfViewer(
     targetVerticalProgress: Float? = null,
     onScrollProgress: (Float) -> Unit = {},
     searchResults: List<com.infer.inferead.viewmodel.SearchResult>? = null,
-    searchJumpIndex: com.infer.inferead.viewmodel.SearchResult? = null
+    searchJumpIndex: com.infer.inferead.viewmodel.ReaderViewModel.SearchJumpRequest? = null
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val parcelFileDescriptor = remember {
@@ -360,7 +360,7 @@ fun PdfViewer(
         }
         
         LaunchedEffect(searchJumpIndex) {
-            searchJumpIndex?.let { res ->
+            searchJumpIndex?.result?.let { res ->
                 val pageIdx = res.chapterIndex
                 if (pageIdx != pagerState.currentPage && pageIdx in 0 until pdfRenderer.pageCount) {
                     pagerState.scrollToPage(pageIdx)
@@ -438,7 +438,7 @@ fun PdfViewer(
                                             
                                             for (res in pageResults) {
                                                 res.rects?.forEach { r ->
-                                                    val isJumped = searchJumpIndex?.matchIndex == res.matchIndex && searchJumpIndex.pageNumber == res.pageNumber
+                                                    val isJumped = searchJumpIndex?.result?.matchIndex == res.matchIndex && searchJumpIndex?.result?.pageNumber == res.pageNumber
                                                     val color = if (isJumped) androidx.compose.ui.graphics.Color(0x80FF9800) else androidx.compose.ui.graphics.Color(0x60FFFF00)
                                                     drawRect(
                                                         color = color,
@@ -511,7 +511,7 @@ fun PdfViewer(
         }
         
         LaunchedEffect(searchJumpIndex) {
-            searchJumpIndex?.let { res ->
+            searchJumpIndex?.result?.let { res ->
                 val pageIdx = res.chapterIndex
                 if (pageIdx != listState.firstVisibleItemIndex && pageIdx in 0 until pdfRenderer.pageCount) {
                     listState.scrollToItem(pageIdx)
@@ -575,7 +575,7 @@ fun PdfViewer(
                                                 
                                                 for (res in pageResults) {
                                                     res.rects?.forEach { r ->
-                                                        val isJumped = searchJumpIndex?.matchIndex == res.matchIndex && searchJumpIndex.pageNumber == res.pageNumber
+                                                        val isJumped = searchJumpIndex?.result?.matchIndex == res.matchIndex && searchJumpIndex?.result?.pageNumber == res.pageNumber
                                                         val color = if (isJumped) androidx.compose.ui.graphics.Color(0x80FF9800) else androidx.compose.ui.graphics.Color(0x60FFFF00)
                                                         drawRect(
                                                             color = color,
@@ -591,9 +591,6 @@ fun PdfViewer(
                                 .zoomable { newScale, newOffset, zoomed ->
                                     scale = newScale
                                     offset = newOffset
-                                }
-                                .pointerInput(Unit) {
-                                    detectTapGestures(onDoubleTap = { onTap() })
                                 },
                             contentScale = ContentScale.FillWidth,
                             colorFilter = cf
@@ -704,7 +701,7 @@ fun TXTReader(
     targetVerticalProgress: Float? = null,
     onScrollProgress: (Float) -> Unit = {},
     searchResults: List<com.infer.inferead.viewmodel.SearchResult>? = null,
-    searchJumpIndex: com.infer.inferead.viewmodel.SearchResult? = null,
+    searchJumpIndex: com.infer.inferead.viewmodel.ReaderViewModel.SearchJumpRequest? = null,
     searchQuery: String = ""
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -1025,40 +1022,93 @@ fun TXTReader(
                 }
 
                 androidx.compose.runtime.LaunchedEffect(searchJumpIndex) {
-                    searchJumpIndex?.let { res ->
+                    searchJumpIndex?.result?.let { res ->
                         if (searchQuery.isNotEmpty()) {
                             webViewRef?.evaluateJavascript(
                                 """
-                                if (!document.getElementById('search-style')) {
-                                    var style = document.createElement('style');
-                                    style.id = 'search-style';
-                                    style.innerHTML = '::selection { background: rgba(255, 152, 0, 0.6); color: inherit; }';
-                                    document.head.appendChild(style);
-                                }
-                                if (window.lastQuery !== '${searchQuery.replace("'", "\\'")}') {
-                                    window.lastQuery = '${searchQuery.replace("'", "\\'")}';
-                                    var bodyHtml = document.body.innerHTML.replace(/<mark[^>]*>|<\/mark>/gi, '');
-                                    var escapedQuery = window.lastQuery.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\${'$'}&');
-                                    var regex = new RegExp('(' + escapedQuery + ')', 'gi');
-                                    document.body.innerHTML = bodyHtml.replace(regex, '<mark style="background: rgba(255, 255, 0, 0.4); color: inherit; border-radius: 2px;">${'$'}1</mark>');
-                                    // Reset selection to start
-                                    window.getSelection().removeAllRanges();
-                                    
-                                    // Find N times to reach the current index since we reset the DOM
-                                    for (var i = 0; i <= ${res.matchIndex}; i++) {
-                                        window.find(window.lastQuery, false, false, true, false, false, false);
+                                (function() {
+                                    if (!document.getElementById('search-style')) {
+                                        var style = document.createElement('style');
+                                        style.id = 'search-style';
+                                        style.innerHTML = '::selection { background: rgba(255, 152, 0, 0.6); color: inherit; } .search-match { background: rgba(255, 255, 0, 0.4); color: inherit; border-radius: 2px; } .search-match.active { background: rgba(255, 152, 0, 0.6); }';
+                                        document.head.appendChild(style);
                                     }
-                                } else {
-                                    window.find('${searchQuery.replace("'", "\\'")}', false, false, true, false, false, false);
-                                }
-                                var sel = window.getSelection();
-                                if (sel.rangeCount > 0) {
-                                    var rect = sel.getRangeAt(0).getBoundingClientRect();
-                                    var absoluteLeft = rect.left + window.scrollX;
-                                    var page = Math.floor(absoluteLeft / window.innerWidth);
-                                    window.scrollTo(page * window.innerWidth, 0);
-                                    Android.reportCurrentPage(page + 1);
-                                }
+
+                                    // Clear old highlights
+                                    document.querySelectorAll('.search-match').forEach(function(el) {
+                                        var parent = el.parentNode;
+                                        while (el.firstChild) parent.insertBefore(el.firstChild, el);
+                                        parent.removeChild(el);
+                                        parent.normalize();
+                                    });
+
+                                    var query = "${searchQuery.replace("\"", "\\\"").replace("\n", " ").lowercase()}";
+                                    if (!query) return;
+
+                                    var walker = document.createTreeWalker(
+                                        document.body,
+                                        NodeFilter.SHOW_TEXT,
+                                        null,
+                                        false
+                                    );
+
+                                    var textNodes = [];
+                                    while (walker.nextNode()) {
+                                        if (walker.currentNode.parentNode.nodeName !== 'SCRIPT' && 
+                                            walker.currentNode.parentNode.nodeName !== 'STYLE') {
+                                            textNodes.push(walker.currentNode);
+                                        }
+                                    }
+
+                                    var matchCount = 0;
+                                    var targetIndex = ${res.matchIndex};
+
+                                    for (var i = 0; i < textNodes.length; i++) {
+                                        var node = textNodes[i];
+                                        var nodeText = node.nodeValue;
+                                        var lowerText = nodeText.toLowerCase();
+                                        var pos = lowerText.indexOf(query);
+
+                                        while (pos !== -1) {
+                                            var before = nodeText.substring(0, pos);
+                                            var match = nodeText.substring(pos, pos + query.length);
+                                            var after = nodeText.substring(pos + query.length);
+
+                                            var beforeNode = document.createTextNode(before);
+                                            var matchNode = document.createElement('mark');
+                                            matchNode.className = 'search-match';
+                                            matchNode.textContent = match;
+                                            
+                                            if (matchCount === targetIndex) {
+                                                matchNode.className += ' active';
+                                                matchNode.id = 'search-target';
+                                            }
+
+                                            var parent = node.parentNode;
+                                            parent.insertBefore(beforeNode, node);
+                                            parent.insertBefore(matchNode, node);
+                                            
+                                            node.nodeValue = after;
+                                            nodeText = after;
+                                            lowerText = after.toLowerCase();
+
+                                            matchCount++;
+                                            pos = lowerText.indexOf(query);
+                                        }
+                                    }
+
+                                    var target = document.getElementById('search-target');
+                                    if (target) {
+                                        var rect = target.getBoundingClientRect();
+                                        var absoluteLeft = rect.left + window.scrollX;
+                                        var page = Math.floor(absoluteLeft / window.innerWidth);
+                                        window.scrollTo(page * window.innerWidth, 0);
+                                        if (window.Android) {
+                                            window.Android.reportCurrentPage(page + 1);
+                                        }
+                                    }
+                                    window.getSelection().removeAllRanges();
+                                })();
                                 """.trimIndent(), null
                             )
                         }
@@ -1087,7 +1137,7 @@ fun TXTReader(
                 var textLayoutResult by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<androidx.compose.ui.text.TextLayoutResult?>(null) }
                 
                 androidx.compose.runtime.LaunchedEffect(searchJumpIndex, textLayoutResult) {
-                    val res = searchJumpIndex
+                    val res = searchJumpIndex?.result
                     val layout = textLayoutResult
                     if (res != null && layout != null && res.textIndex != null) {
                         try {
@@ -1106,7 +1156,7 @@ fun TXTReader(
                     val builder = androidx.compose.ui.text.AnnotatedString.Builder(loadedText!!)
                     var idx = loadedText!!.indexOf(searchQuery, ignoreCase = true)
                     while (idx >= 0) {
-                        val isJumped = searchJumpIndex?.textIndex == idx
+                        val isJumped = searchJumpIndex?.result?.textIndex == idx
                         val color = if (isJumped) androidx.compose.ui.graphics.Color(0x80FF9800) else androidx.compose.ui.graphics.Color(0x60FFFF00)
                         builder.addStyle(
                             style = androidx.compose.ui.text.SpanStyle(background = color),
@@ -1768,6 +1818,7 @@ fun EPUBReader(
     var isLoading by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(true) }
     var errorMessage by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
     var webViewRef by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<android.webkit.WebView?>(null) }
+    var webViewPageLoaded by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
 
     androidx.compose.runtime.LaunchedEffect(filePath) {
         isLoading = true
@@ -2013,93 +2064,144 @@ fun EPUBReader(
             }
         }
 
-        val searchJump by viewModel.searchJumpIndex.collectAsState()
-        androidx.compose.runtime.LaunchedEffect(searchJump) {
-            searchJump?.let { res ->
-                if (res.chapterIndex != chapterIndex - 1) {
-                    onPageChanged(res.chapterIndex + 1)
+        val searchJumpRequest by viewModel.searchJumpIndex.collectAsState()
+        // Ref to hold pending search jump for onPageFinished to pick up (cross-chapter)
+        val pendingSearchJump = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<com.infer.inferead.viewmodel.SearchResult?>(null) }
+
+        // Helper: build the search highlight JS for a given query and match index
+        fun buildSearchHighlightJs(queryText: String, matchIndex: Int): String {
+            val escapedQuery = queryText.replace("\"", "\\\"").replace("\n", " ")
+            return """
+                (function() {
+                    // Clean up previous highlights
+                    document.querySelectorAll('.search-match').forEach(function(el) {
+                        var parent = el.parentNode;
+                        while (el.firstChild) parent.insertBefore(el.firstChild, el);
+                        parent.removeChild(el);
+                        parent.normalize();
+                    });
+
+                    var query = "$escapedQuery".toLowerCase();
+                    if (!query) return;
+                    var targetIdx = $matchIndex;
+                    var matchCount = 0;
+
+                    // TreeWalker: collect all text nodes
+                    var walker = document.createTreeWalker(
+                        document.body, NodeFilter.SHOW_TEXT, null, false
+                    );
+                    var textNodes = [];
+                    while (walker.nextNode()) textNodes.push(walker.currentNode);
+
+                    for (var i = 0; i < textNodes.length; i++) {
+                        var node = textNodes[i];
+                        var text = node.nodeValue;
+                        var lowerText = text.toLowerCase();
+                        var pos = lowerText.indexOf(query);
+                        while (pos !== -1) {
+                            var before = node.nodeValue.substring(0, pos);
+                            var matched = node.nodeValue.substring(pos, pos + query.length);
+                            var after = node.nodeValue.substring(pos + query.length);
+
+                            var mark = document.createElement('mark');
+                            mark.className = 'search-match';
+                            mark.style.color = 'inherit';
+                            mark.style.borderRadius = '2px';
+                            mark.style.padding = '1px 0';
+                            if (matchCount === targetIdx) {
+                                mark.style.backgroundColor = 'rgba(255, 152, 0, 0.6)';
+                                mark.id = 'search-target';
+                            } else {
+                                mark.style.backgroundColor = 'rgba(255, 255, 0, 0.4)';
+                            }
+                            mark.textContent = matched;
+
+                            var parent = node.parentNode;
+                            if (before) {
+                                parent.insertBefore(document.createTextNode(before), node);
+                            }
+                            parent.insertBefore(mark, node);
+                            if (after) {
+                                node.nodeValue = after;
+                            } else {
+                                parent.removeChild(node);
+                                node = null;
+                            }
+                            matchCount++;
+                            if (node) {
+                                lowerText = node.nodeValue.toLowerCase();
+                                pos = lowerText.indexOf(query);
+                            } else {
+                                break;
+                            }
+                        }
+                    }
+
+                    var target = document.getElementById('search-target');
+                    if (target) {
+                        target.scrollIntoView({behavior: 'smooth', block: 'center'});
+                    }
+                    window.getSelection().removeAllRanges();
+                })();
+            """.trimIndent()
+        }
+
+        // Handle search jump navigation and highlighting
+        androidx.compose.runtime.LaunchedEffect(searchJumpRequest) {
+            val request = searchJumpRequest ?: return@LaunchedEffect
+            val res = request.result
+            if (res.chapterIndex == chapterIndex - 1) {
+                // Same chapter: page already loaded, inject JS immediately
+                pendingSearchJump.value = null
+                val queryText = viewModel.searchQuery.value
+                if (queryText.isNotBlank() && webViewRef != null) {
+                    val jsCode = buildSearchHighlightJs(queryText, res.matchIndex)
+                    webViewRef?.evaluateJavascript(jsCode, null)
                 }
+                viewModel.clearSearchJump()
+            } else {
+                // Cross-chapter: store pending jump, navigate, then wait for page load
+                pendingSearchJump.value = res
+                webViewPageLoaded = false
+                onPageChanged(res.chapterIndex + 1)
+                // Wait for the new page to finish loading (poll with timeout)
+                var waitMs = 0
+                while (!webViewPageLoaded && waitMs < 5000) {
+                    kotlinx.coroutines.delay(50)
+                    waitMs += 50
+                }
+                // Small delay to let DOM settle after annotation rendering
+                kotlinx.coroutines.delay(300)
+                // Now inject the search highlight JS
+                val queryText = viewModel.searchQuery.value
+                val wv = webViewRef
+                if (queryText.isNotBlank() && wv != null && pendingSearchJump.value != null) {
+                    val jsCode = buildSearchHighlightJs(queryText, res.matchIndex)
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        wv.evaluateJavascript(jsCode, null)
+                    }
+                }
+                pendingSearchJump.value = null
+                viewModel.clearSearchJump()
             }
         }
-        
-        // If the chapter is already loaded and we just jumped within it
-        androidx.compose.runtime.LaunchedEffect(searchJump, webViewRef) {
-            searchJump?.let { res ->
-                if (res.chapterIndex == chapterIndex - 1 && webViewRef != null) {
-                    val queryText = viewModel.searchQuery.value.replace("\"", "\\\"").replace("\n", " ")
-                    val jsSearchCode = """
+
+        // Clear highlights when search query becomes blank (user closes search bar)
+        androidx.compose.runtime.LaunchedEffect(searchQuery) {
+            if (searchQuery.isBlank() && webViewRef != null) {
+                // Small delay to ensure we're on the main thread and WebView is ready
+                kotlinx.coroutines.delay(100)
+                val jsClearCode = """
+                    (function() {
                         document.querySelectorAll('.search-match').forEach(function(el) {
                             var parent = el.parentNode;
                             while (el.firstChild) parent.insertBefore(el.firstChild, el);
                             parent.removeChild(el);
                             parent.normalize();
                         });
-                        document.querySelectorAll('span[style*="yellow"], span[style*="ff9800"], span[style*="rgb(255, 152, 0)"]').forEach(function(el) {
-                            var parent = el.parentNode;
-                            while(el.firstChild) parent.insertBefore(el.firstChild, el);
-                            parent.removeChild(el);
-                            parent.normalize();
-                        });
-                        
-                        var resetCursor = function() {
-                            var sel = window.getSelection();
-                            sel.removeAllRanges();
-                            var range = document.createRange();
-                            range.selectNodeContents(document.body);
-                            range.collapse(true);
-                            sel.addRange(range);
-                        };
-                        resetCursor();
-                        
-                        while (window.find("$queryText", false, false, false, false, true, false)) {
-                            var sel = window.getSelection();
-                            if (sel.rangeCount > 0) {
-                                var range = sel.getRangeAt(0);
-                                var mark = document.createElement('mark');
-                                mark.className = 'search-match';
-                                mark.style.backgroundColor = 'rgba(255, 255, 0, 0.4)';
-                                mark.style.color = 'inherit';
-                                mark.style.borderRadius = '2px';
-                                try {
-                                    range.surroundContents(mark);
-                                } catch(e) {
-                                    document.execCommand("hiliteColor", false, "yellow");
-                                }
-                            }
-                        }
-                        
-                        resetCursor();
-                        
-                        for (var i = 0; i <= ${res.matchIndex}; i++) {
-                            window.find("$queryText", false, false, false, false, true, false);
-                        }
-                        
-                        var targetNode = null;
-                        var sel = window.getSelection();
-                        if (sel.rangeCount > 0) {
-                            var range = sel.getRangeAt(0);
-                            targetNode = sel.anchorNode.parentElement;
-                            var mark = document.createElement('mark');
-                            mark.className = 'search-match';
-                            mark.style.backgroundColor = 'rgba(255, 152, 0, 0.6)';
-                            mark.style.color = 'inherit';
-                            mark.style.borderRadius = '2px';
-                            try {
-                                range.surroundContents(mark);
-                                targetNode = mark;
-                            } catch(e) {
-                                document.execCommand("hiliteColor", false, "#ff9800");
-                            }
-                        }
-                        
-                        if (targetNode) {
-                            targetNode.scrollIntoView({behavior: 'smooth', block: 'center'});
-                        }
-                        window.getSelection().removeAllRanges();
-                    """.trimIndent()
-                    webViewRef?.evaluateJavascript(jsSearchCode, null)
-                    viewModel.clearSearchJump()
-                }
+                    })();
+                """.trimIndent()
+                webViewRef?.evaluateJavascript(jsClearCode, null)
             }
         }
     }
@@ -2699,86 +2801,12 @@ fun EPUBReader(
                                         if (targetId != null) {
                                             view?.evaluateJavascript("javascript:scrollToAnnotation($targetId);", null)
                                         }
+                                        // Signal that the page is loaded so search JS can run
+                                        webViewPageLoaded = true
                                         
-                                        if (viewModel != null) {
-                                            val jump = viewModel.searchJumpIndex.value
-                                            val currentQuery = viewModel.searchQuery.value
-                                            if (jump != null && jump.chapterIndex == chapterIndexSafe) {
-                                                val queryText = currentQuery.replace("\"", "\\\"").replace("\n", " ")
-                                                val jsSearchCode = """
-                                                    document.querySelectorAll('.search-match').forEach(function(el) {
-                                                        var parent = el.parentNode;
-                                                        while (el.firstChild) parent.insertBefore(el.firstChild, el);
-                                                        parent.removeChild(el);
-                                                        parent.normalize();
-                                                    });
-                                                    document.querySelectorAll('span[style*="yellow"], span[style*="ff9800"], span[style*="rgb(255, 152, 0)"]').forEach(function(el) {
-                                                        var parent = el.parentNode;
-                                                        while(el.firstChild) parent.insertBefore(el.firstChild, el);
-                                                        parent.removeChild(el);
-                                                        parent.normalize();
-                                                    });
-                                                    
-                                                    var resetCursor = function() {
-                                                        var sel = window.getSelection();
-                                                        sel.removeAllRanges();
-                                                        var range = document.createRange();
-                                                        range.selectNodeContents(document.body);
-                                                        range.collapse(true);
-                                                        sel.addRange(range);
-                                                    };
-                                                    resetCursor();
-                                                    
-                                                    while (window.find("$queryText", false, false, false, false, true, false)) {
-                                                        var sel = window.getSelection();
-                                                        if (sel.rangeCount > 0) {
-                                                            var range = sel.getRangeAt(0);
-                                                            var mark = document.createElement('mark');
-                                                            mark.className = 'search-match';
-                                                            mark.style.backgroundColor = 'rgba(255, 255, 0, 0.4)';
-                                                            mark.style.color = 'inherit';
-                                                            mark.style.borderRadius = '2px';
-                                                            try {
-                                                                range.surroundContents(mark);
-                                                            } catch(e) {
-                                                                document.execCommand("hiliteColor", false, "yellow");
-                                                            }
-                                                        }
-                                                    }
-                                                    
-                                                    resetCursor();
-                                                    
-                                                    for (var i = 0; i <= ${jump.matchIndex}; i++) {
-                                                        window.find("$queryText", false, false, false, false, true, false);
-                                                    }
-                                                    
-                                                    var targetNode = null;
-                                                    var sel = window.getSelection();
-                                                    if (sel.rangeCount > 0) {
-                                                        var range = sel.getRangeAt(0);
-                                                        targetNode = sel.anchorNode.parentElement;
-                                                        var mark = document.createElement('mark');
-                                                        mark.className = 'search-match';
-                                                        mark.style.backgroundColor = 'rgba(255, 152, 0, 0.6)';
-                                                        mark.style.color = 'inherit';
-                                                        mark.style.borderRadius = '2px';
-                                                        try {
-                                                            range.surroundContents(mark);
-                                                            targetNode = mark;
-                                                        } catch(e) {
-                                                            document.execCommand("hiliteColor", false, "#ff9800");
-                                                        }
-                                                    }
-                                                    
-                                                    if (targetNode) {
-                                                        targetNode.scrollIntoView({behavior: 'smooth', block: 'center'});
-                                                    }
-                                                    window.getSelection().removeAllRanges();
-                                                """.trimIndent()
-                                                view?.evaluateJavascript(jsSearchCode, null)
-                                                viewModel.clearSearchJump()
-                                            }
-                                        }
+                                        // Note: Cross-chapter search jump is handled by the
+                                        // LaunchedEffect(searchJumpRequest) which polls for
+                                        // webViewPageLoaded, then injects JS.
                                     }
                                 }
                                 setBackgroundColor(android.graphics.Color.TRANSPARENT)
@@ -2794,6 +2822,7 @@ fun EPUBReader(
                             webView.tag = Pair(annotationsJson, targetScrollAnnId)
                             val currentUrl = webView.url
                             if (currentUrl != htmlUrl) {
+                                webViewPageLoaded = false
                                 webView.loadUrl(htmlUrl)
                             } else {
                                 webView.evaluateJavascript(js, null)

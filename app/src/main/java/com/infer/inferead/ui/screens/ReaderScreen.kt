@@ -255,6 +255,7 @@ fun ReaderScreen(
     val searchResults by viewModel.searchResults.collectAsState()
     val searchJumpIndex by viewModel.searchJumpIndex.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
+    val currentSearchIdx by viewModel.currentSearchResultIndex.collectAsState()
 
     // State for Top/Bottom Bars visibility    
     var showSettingsSheet by remember { mutableStateOf(false) }
@@ -1903,7 +1904,7 @@ fun ReaderScreen(
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    if (formatGroup != "IMAGE" && formatGroup != "PDF") {
+                    if (formatGroup != "IMAGE" && formatGroup != "PDF" && formatGroup != "CBZ_CBR_CB7") {
                         IconButton(onClick = { showCustomiseTopBar = true }, modifier = Modifier.size(32.dp)) {
                             Icon(Icons.Default.Add, contentDescription = "Customise Top Bar", tint = textColor)
                         }
@@ -1916,7 +1917,7 @@ fun ReaderScreen(
                         color = textColor,
                         textAlign = TextAlign.Center
                     )
-                    if (formatGroup != "IMAGE" && formatGroup != "PDF") {
+                    if (formatGroup != "IMAGE" && formatGroup != "PDF" && formatGroup != "CBZ_CBR_CB7") {
                         Spacer(modifier = Modifier.width(8.dp))
                         IconButton(onClick = { showFileSearch = true; showSettingsSheet = false }, modifier = Modifier.size(32.dp)) {
                             Icon(Icons.Default.Search, contentDescription = "Search in File", tint = textColor)
@@ -2661,24 +2662,24 @@ fun ReaderScreen(
                             .padding(horizontal = 4.dp, vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        val currentIndex = searchResults.indexOf(searchJumpIndex).coerceAtLeast(0)
+                        val displayIndex = if (currentSearchIdx in searchResults.indices) currentSearchIdx else 0
                         Text(
-                            text = "${currentIndex + 1} / ${searchResults.size}",
+                            text = "${displayIndex + 1} / ${searchResults.size}",
                             color = textColor,
                             style = MaterialTheme.typography.labelMedium,
                             modifier = Modifier.padding(horizontal = 8.dp)
                         )
                         IconButton(onClick = { 
-                            val prevIndex = if (currentIndex > 0) currentIndex - 1 else searchResults.size - 1
-                            viewModel.triggerSearchJump(searchResults[prevIndex])
+                            val prevIndex = if (displayIndex > 0) displayIndex - 1 else searchResults.size - 1
+                            viewModel.triggerSearchJump(prevIndex)
                             isDropdownVisible = false
                             focusManager.clearFocus()
                         }, modifier = Modifier.size(36.dp)) {
                             Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Previous", tint = textColor)
                         }
                         IconButton(onClick = { 
-                            val nextIndex = if (currentIndex < searchResults.size - 1) currentIndex + 1 else 0
-                            viewModel.triggerSearchJump(searchResults[nextIndex])
+                            val nextIndex = if (displayIndex < searchResults.size - 1) displayIndex + 1 else 0
+                            viewModel.triggerSearchJump(nextIndex)
                             isDropdownVisible = false
                             focusManager.clearFocus()
                         }, modifier = Modifier.size(36.dp)) {
@@ -2703,12 +2704,12 @@ fun ReaderScreen(
                         ) {
                             items(searchResults.size) { index ->
                                 val result = searchResults[index]
-                                val isSelected = searchJumpIndex == result
+                                val isSelected = index == currentSearchIdx
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .clickable { 
-                                            viewModel.triggerSearchJump(result) 
+                                            viewModel.triggerSearchJump(index) 
                                             isDropdownVisible = false
                                             keyboardController?.hide()
                                         }

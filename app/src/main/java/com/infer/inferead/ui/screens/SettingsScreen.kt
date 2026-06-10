@@ -183,6 +183,35 @@ fun SettingsScreen(
         }
     }
 
+    // State for folder browser dialog (used when MANAGE_EXTERNAL_STORAGE is granted)
+    var showFolderBrowser by remember { mutableStateOf(false) }
+    var folderBrowserPath by remember { mutableStateOf("/storage/emulated/0") }
+
+    // Helper to check if we have all files access on Android 11+
+    fun hasAllFilesAccess(): Boolean {
+        return if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            android.os.Environment.isExternalStorageManager()
+        } else {
+            true // Not needed pre-Android 11
+        }
+    }
+
+    // Helper to request MANAGE_EXTERNAL_STORAGE permission
+    fun requestAllFilesAccess() {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            try {
+                val intent = android.content.Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
+                intent.data = android.net.Uri.parse("package:${context.packageName}")
+                context.startActivity(intent)
+            } catch (e: Exception) {
+                val intent = android.content.Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+                context.startActivity(intent)
+            }
+        }
+    }
+
+    var showStoragePermissionDialog by remember { mutableStateOf(false) }
+
     fun updateGoal(minutes: Int) {
         readingGoalMinutes = minutes
         prefs.edit().putInt("reading_goal_minutes", minutes).apply()
@@ -573,7 +602,16 @@ fun SettingsScreen(
                                     Text("Files")
                                 }
                                 OutlinedButton(
-                                    onClick = { folderScanLauncher.launch(null) },
+                                    onClick = {
+                                        if (hasAllFilesAccess()) {
+                                            folderBrowserPath = "/storage/emulated/0"
+                                            showFolderBrowser = true
+                                        } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                                            showStoragePermissionDialog = true
+                                        } else {
+                                            folderScanLauncher.launch(null)
+                                        }
+                                    },
                                     modifier = Modifier.weight(1f).height(56.dp),
                                     shape = RoundedCornerShape(8.dp)
                                 ) {
@@ -1349,5 +1387,148 @@ fun SettingsScreen(
                 Spacer(modifier = Modifier.height(32.dp))
             }
         }
+    }
+
+    // Storage permission request dialog
+    if (showStoragePermissionDialog) {
+        AlertDialog(
+            onDismissRequest = { showStoragePermissionDialog = false },
+            icon = { Icon(Icons.Default.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+            title = { Text("Storage Access Required") },
+            text = {
+                Text(
+                    "Android restricts access to default folders like Downloads, Documents, and DCIM. " +
+                    "To scan these folders, please grant 'All files access' permission in the next screen.\n\n" +
+                    "Alternatively, you can use the system file picker which has limited folder access."
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showStoragePermissionDialog = false
+                        requestAllFilesAccess()
+                    }
+                ) {
+                    Text("Grant Access")
+                }
+            },
+            dismissButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = {
+                        showStoragePermissionDialog = false
+                        folderScanLauncher.launch(null)
+                    }) {
+                        Text("Use File Picker")
+                    }
+                    TextButton(onClick = { showStoragePermissionDialog = false }) {
+                        Text("Cancel")
+                    }
+                }
+            }
+        )
+    }
+
+    // Folder browser dialog
+    if (showFolderBrowser) {
+        val currentDir = remember(folderBrowserPath) { java.io.File(folderBrowserPath) }
+        val children = remember(folderBrowserPath) {
+            currentDir.listFiles()
+                ?.filter { it.isDirectory && !it.name.startsWith(".") }
+                ?.sortedBy { it.name.lowercase() }
+                ?: emptyList()
+        }
+        val displayPath = folderBrowserPath.removePrefix("/storage/emulated/0").ifEmpty { "/" }
+
+        AlertDialog(
+            onDismissRequest = { showFolderBrowser = false },
+            title = {
+                Column {
+                    Text("Select Folder", fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        displayPath,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            },
+            text = {
+                Column(modifier = Modifier.heightIn(max = 400.dp)) {
+                    // Navigation: go up
+                    if (folderBrowserPath != "/storage/emulated/0" && folderBrowserPath != "/storage") {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable {
+                                    val parent = currentDir.parentFile
+                                    if (parent != null && parent.absolutePath.startsWith("/storage")) {
+                                        folderBrowserPath = parent.absolutePath
+                                    }
+                                }
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.ArrowBack, contentDescription = "Go up", modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text("Go up", fontWeight = FontWeight.SemiBold)
+                        }
+                        Divider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+                    }
+
+                    if (children.isEmpty()) {
+                        Box(
+                            modifier = Modifier.fillMaxWidth().padding(32.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("No subfolders", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    } else {
+                        LazyColumn {
+                            items(children) { dir ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable { folderBrowserPath = dir.absolutePath }
+                                        .padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        Icons.Default.Folder,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(20.dp),
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Text(
+                                        dir.name,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showFolderBrowser = false
+                        viewModel.scanFolderForNewFilesByPath(folderBrowserPath, selectedFileTypes.toList())
+                    }
+                ) {
+                    Text("Scan This Folder")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showFolderBrowser = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }

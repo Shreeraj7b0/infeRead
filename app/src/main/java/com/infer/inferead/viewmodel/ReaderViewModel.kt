@@ -116,8 +116,16 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     private val _searchResults = MutableStateFlow<List<SearchResult>>(emptyList())
     val searchResults: StateFlow<List<SearchResult>> = _searchResults.asStateFlow()
 
-    private val _searchJumpIndex = MutableStateFlow<SearchResult?>(null)
-    val searchJumpIndex: StateFlow<SearchResult?> = _searchJumpIndex.asStateFlow()
+    // Wrapper to avoid StateFlow deduplication: each jump gets a unique ID
+    data class SearchJumpRequest(val result: SearchResult, val jumpId: Long)
+    
+    private val _searchJumpIndex = MutableStateFlow<SearchJumpRequest?>(null)
+    val searchJumpIndex: StateFlow<SearchJumpRequest?> = _searchJumpIndex.asStateFlow()
+
+    private val _currentSearchResultIndex = MutableStateFlow(-1)
+    val currentSearchResultIndex: StateFlow<Int> = _currentSearchResultIndex.asStateFlow()
+    
+    private var searchJumpCounter = 0L
 
     private var searchJob: kotlinx.coroutines.Job? = null
 
@@ -130,6 +138,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         searchJob?.cancel()
         if (query.isBlank()) {
             _searchResults.value = emptyList()
+            _currentSearchResultIndex.value = -1
             return
         }
         
@@ -196,14 +205,24 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
             
             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                 _searchResults.value = results
+                _currentSearchResultIndex.value = -1
             }
         } catch (e: Exception) {
             e.printStackTrace()
         }
     }
 
-    fun setSearchResults(results: List<SearchResult>) { _searchResults.value = results }
-    fun triggerSearchJump(result: SearchResult) { _searchJumpIndex.value = result }
+    fun setSearchResults(results: List<SearchResult>) { 
+        _searchResults.value = results 
+        _currentSearchResultIndex.value = -1
+    }
+    fun triggerSearchJump(index: Int) {
+        val results = _searchResults.value
+        if (index in results.indices) {
+            _currentSearchResultIndex.value = index
+            _searchJumpIndex.value = SearchJumpRequest(results[index], ++searchJumpCounter)
+        }
+    }
     fun clearSearchJump() { _searchJumpIndex.value = null }
 
     private var sessionStartTime: Long = 0
