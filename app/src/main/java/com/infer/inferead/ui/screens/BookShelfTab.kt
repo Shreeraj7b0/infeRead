@@ -1152,22 +1152,62 @@ fun BookshelfRow(
                                     ),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                AsyncImage(
-                                    model = file.thumbnailUri ?: if (file.format == "IMAGE" && file.filePath.startsWith("content://")) android.net.Uri.parse(file.filePath) else if (file.format == "IMAGE") java.io.File(file.filePath) else null,
-                                    contentDescription = null,
-                                    modifier = Modifier
-                                        .size(34.dp, 48.dp)
-                                        .clip(RoundedCornerShape(3.dp))
-                                        .background(Color.Gray)
-                                )
+                                Box {
+                                    AsyncImage(
+                                        model = file.thumbnailUri ?: if (file.format == "IMAGE" && file.filePath.startsWith("content://")) android.net.Uri.parse(file.filePath) else if (file.format == "IMAGE") java.io.File(file.filePath) else null,
+                                        contentDescription = null,
+                                        modifier = Modifier
+                                            .size(34.dp, 48.dp)
+                                            .clip(RoundedCornerShape(3.dp))
+                                            .background(Color.Gray)
+                                    )
+                                    if (file.isFinished) {
+                                        Icon(
+                                            Icons.Default.CheckCircle,
+                                            contentDescription = "Finished",
+                                            tint = Color(0xFF4CAF50),
+                                            modifier = Modifier.align(Alignment.TopEnd).padding(2.dp).size(14.dp)
+                                        )
+                                    }
+                                    Row(
+                                        modifier = Modifier
+                                            .align(Alignment.TopStart)
+                                            .padding(2.dp),
+                                         horizontalArrangement = Arrangement.spacedBy(2.dp)
+                                    ) {
+                                        if (file.isBookmarked) {
+                                            Box(modifier = Modifier.size(8.dp).background(Color(0xFFFFC107), CircleShape).border(1.dp, Color.White.copy(alpha = 0.7f), CircleShape))
+                                        }
+                                        if (file.isToRead) {
+                                            Box(modifier = Modifier.size(8.dp).background(MaterialTheme.colorScheme.tertiary, CircleShape).border(1.dp, Color.White.copy(alpha = 0.7f), CircleShape))
+                                        }
+                                    }
+                                }
                                 Spacer(Modifier.width(10.dp))
-                                Text(
-                                    file.title,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.weight(1f)
-                                )
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        file.title,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    if (file.isBookmarked) {
+                                        val context = androidx.compose.ui.platform.LocalContext.current
+                                        val bookmarkCount = remember(file.id) {
+                                            val readerPrefs = context.getSharedPreferences("reader_settings", android.content.Context.MODE_PRIVATE)
+                                            val saved = readerPrefs.getStringSet("bookmarked_pages_${file.id}", emptySet()) ?: emptySet()
+                                            saved.size
+                                        }
+                                        if (bookmarkCount > 0) {
+                                            Text(
+                                                text = "◉ $bookmarkCount bookmark${if (bookmarkCount > 1) "s" else ""}",
+                                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                                color = Color(0xFFFFC107),
+                                                maxLines = 1
+                                            )
+                                        }
+                                    }
+                                }
                                 if (isAssignmentMode) {
                                     IconButton(
                                         onClick = { onRemoveFileFromShelf(file.id) },
@@ -1226,14 +1266,47 @@ fun BookshelfFileItem(
             )
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            AsyncImage(
-                model = file.thumbnailUri ?: if (file.format == "IMAGE" && file.filePath.startsWith("content://")) android.net.Uri.parse(file.filePath) else if (file.format == "IMAGE") java.io.File(file.filePath) else null,
-                contentDescription = null,
-                modifier = Modifier
-                    .size(60.dp, 85.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(Color.Gray)
-            )
+            Box {
+                AsyncImage(
+                    model = file.thumbnailUri ?: if (file.format == "IMAGE" && file.filePath.startsWith("content://")) android.net.Uri.parse(file.filePath) else if (file.format == "IMAGE") java.io.File(file.filePath) else null,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(60.dp, 85.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Color.Gray)
+                )
+                if (file.isFinished) {
+                    Icon(
+                        Icons.Default.CheckCircle,
+                        contentDescription = "Finished",
+                        tint = Color(0xFF4CAF50),
+                        modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).size(20.dp)
+                    )
+                }
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(5.dp),
+                     horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    if (file.isBookmarked) {
+                        Box(
+                            modifier = Modifier
+                                .size(11.dp)
+                                .background(Color(0xFFFFC107), CircleShape)
+                                .border(1.5.dp, Color.White.copy(alpha = 0.7f), CircleShape)
+                        )
+                    }
+                    if (file.isToRead) {
+                        Box(
+                            modifier = Modifier
+                                .size(11.dp)
+                                .background(MaterialTheme.colorScheme.tertiary, CircleShape)
+                                .border(1.5.dp, Color.White.copy(alpha = 0.7f), CircleShape)
+                        )
+                    }
+                }
+            }
             Spacer(Modifier.height(4.dp))
             Text(
                 file.title,
@@ -1241,6 +1314,22 @@ fun BookshelfFileItem(
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
+            if (file.isBookmarked) {
+                val context = androidx.compose.ui.platform.LocalContext.current
+                val bookmarkCount = remember(file.id) {
+                    val readerPrefs = context.getSharedPreferences("reader_settings", android.content.Context.MODE_PRIVATE)
+                    val saved = readerPrefs.getStringSet("bookmarked_pages_${file.id}", emptySet()) ?: emptySet()
+                    saved.size
+                }
+                if (bookmarkCount > 0) {
+                    Text(
+                        text = "◉ $bookmarkCount bookmark${if (bookmarkCount > 1) "s" else ""}",
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                        color = Color(0xFFFFC107),
+                        maxLines = 1
+                    )
+                }
+            }
         }
         // (-) remove badge in assignment mode
         if (isAssignmentMode && onRemove != null) {
