@@ -2838,10 +2838,11 @@ fun EPUBReader(
                                     }
 
                                     override fun onPageFinished(view: android.webkit.WebView?, url: String?) {
-                                        val tagData = view?.tag as? Pair<*, *>
+                                        val tagData = view?.tag as? Triple<*, *, *>
                                         val anns = (tagData?.first as? String) ?: ""
                                         val targetId = tagData?.second as? Int
-                                        view?.evaluateJavascript(js, null)
+                                        val currentJs = (tagData?.third as? String) ?: js
+                                        view?.evaluateJavascript(currentJs, null)
                                         view?.evaluateJavascript("if(window.renderAnnotations) { window.renderAnnotations('${anns.replace("'", "\\'")}'); setTimeout(function(){ reportPositions(); }, 500); }", null)
                                         if (targetId != null) {
                                             view?.evaluateJavascript("javascript:scrollToAnnotation($targetId);", null)
@@ -2864,7 +2865,7 @@ fun EPUBReader(
                             webView.settings.builtInZoomControls = isFixedLayoutLocal
                             webView.settings.displayZoomControls = false
 
-                            webView.tag = Pair(annotationsJson, targetScrollAnnId)
+                            webView.tag = Triple(annotationsJson, targetScrollAnnId, js)
                             val currentUrl = webView.url
                             if (currentUrl != htmlUrl) {
                                 webViewPageLoaded = false

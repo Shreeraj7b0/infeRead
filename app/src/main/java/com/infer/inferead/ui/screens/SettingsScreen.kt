@@ -118,11 +118,13 @@ fun SettingsScreen(
                                         zos.closeEntry()
                                     }
                                 }
-                                val prefsFile = java.io.File(context.applicationInfo.dataDir, "shared_prefs/settings_prefs.xml")
-                                if (prefsFile.exists()) {
-                                    zos.putNextEntry(java.util.zip.ZipEntry("settings_prefs.xml"))
-                                    prefsFile.inputStream().use { it.copyTo(zos) }
-                                    zos.closeEntry()
+                                val prefsFolder = java.io.File(context.applicationInfo.dataDir, "shared_prefs")
+                                prefsFolder.listFiles()?.forEach { file ->
+                                    if (file.name.endsWith(".xml")) {
+                                        zos.putNextEntry(java.util.zip.ZipEntry(file.name))
+                                        file.inputStream().use { it.copyTo(zos) }
+                                        zos.closeEntry()
+                                    }
                                 }
                             }
                         }
@@ -147,7 +149,7 @@ fun SettingsScreen(
                             java.util.zip.ZipInputStream(inp).use { zis ->
                                 var entry = zis.nextEntry
                                 while (entry != null) {
-                                    val dest = if (entry.name == "settings_prefs.xml") {
+                                    val dest = if (entry.name.endsWith(".xml")) {
                                         java.io.File(prefsFolder, entry.name)
                                     } else {
                                         java.io.File(dbFolder, entry.name)
