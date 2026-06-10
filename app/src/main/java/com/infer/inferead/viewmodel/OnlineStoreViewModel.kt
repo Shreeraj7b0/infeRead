@@ -24,7 +24,7 @@ class OnlineStoreViewModel(application: Application) : AndroidViewModel(applicat
     private val _searchQuery = MutableStateFlow("")
     val searchQuery = _searchQuery.asStateFlow()
 
-    private val _currentSource = MutableStateFlow("Project Gutenberg")
+    private val _currentSource = MutableStateFlow<String?>(null)
     val currentSource = _currentSource.asStateFlow()
     
     private val _hideWebUi = MutableStateFlow(false)
@@ -65,7 +65,7 @@ class OnlineStoreViewModel(application: Application) : AndroidViewModel(applicat
             .edit().putBoolean("is_annas_archive_defunct", isDefunct).apply()
     }
 
-    fun setSource(source: String) {
+    fun setSource(source: String?) {
         _currentSource.value = source
     }
 

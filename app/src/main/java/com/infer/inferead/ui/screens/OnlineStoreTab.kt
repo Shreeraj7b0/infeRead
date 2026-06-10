@@ -112,7 +112,76 @@ fun OnlineStoreTab(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        Column(modifier = Modifier.fillMaxSize()) {
+        if (currentSource == null) {
+            Column(
+                modifier = Modifier.fillMaxSize().padding(24.dp),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "Select a Source",
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(bottom = 32.dp)
+                )
+                sources.forEach { source ->
+                    val isDefunct = source == "Anna's Archive" && isAnnasArchiveDefunct
+                    val icon = when(source) {
+                        "Project Gutenberg" -> androidx.compose.material.icons.Icons.Default.Search
+                        "Anna's Archive" -> androidx.compose.material.icons.Icons.Default.Search
+                        "Internet Archive" -> androidx.compose.material.icons.Icons.Default.Language
+                        else -> androidx.compose.material.icons.Icons.Default.Language
+                    }
+                    @OptIn(ExperimentalMaterial3Api::class)
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp)
+                            .height(120.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (isDefunct) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f) else MaterialTheme.colorScheme.surfaceVariant
+                        ),
+                        onClick = {
+                            if (!isDefunct) {
+                                viewModel.setSource(source)
+                                if (source == "Project Gutenberg") {
+                                    viewModel.searchBooks(searchQuery)
+                                }
+                            }
+                        }
+                    ) {
+                        Column(
+                            modifier = Modifier.fillMaxSize(),
+                            verticalArrangement = Arrangement.Center,
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Icon(
+                                imageVector = icon,
+                                contentDescription = null,
+                                modifier = Modifier.size(48.dp),
+                                tint = if (isDefunct) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f) else MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = source,
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (isDefunct) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f) else MaterialTheme.colorScheme.onSurface
+                            )
+                            if (isDefunct) {
+                                Text(
+                                    text = "Currently Unavailable",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            Column(modifier = Modifier.fillMaxSize()) {
             if (!isWebViewSource) {
                 // Top Bar / Controls
                 if (activeDownloads.isNotEmpty()) {
@@ -461,6 +530,7 @@ fun OnlineStoreTab(
                         }
                     }
                 }
+            }
             }
         }
     } // End of Box

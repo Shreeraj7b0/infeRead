@@ -1512,7 +1512,7 @@ fun HomeScreen(
                                                     modifier = Modifier.fillMaxWidth().height(56.dp).clip(RoundedCornerShape(8.dp)).clickable { onNavigateToReader(result.id) }.padding(horizontal = 12.dp),
                                                     verticalAlignment = Alignment.CenterVertically
                                                 ) {
-                                                    Icon(Icons.Default.MenuBook, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
+                                                    Icon(Icons.Default.Menu, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
                                                     Spacer(Modifier.width(12.dp))
                                                     Text(result.title, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onBackground, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                                 }
@@ -2325,6 +2325,39 @@ fun HomeScreen(
     }
 
     if (contextMenuFile != null) {
+        val contentResolver = context.contentResolver
+        var fileSize by remember(contextMenuFile) { mutableStateOf<String>("Loading size...") }
+        LaunchedEffect(contextMenuFile) {
+            if (contextMenuFile != null) {
+                val path = contextMenuFile!!.filePath
+                var bytes = 0L
+                if (path.startsWith("content://")) {
+                    try {
+                        val cursor = contentResolver.query(android.net.Uri.parse(path), null, null, null, null)
+                        cursor?.use {
+                            if (it.moveToFirst()) {
+                                val sizeIndex = it.getColumnIndex(android.provider.OpenableColumns.SIZE)
+                                if (sizeIndex != -1) {
+                                    bytes = it.getLong(sizeIndex)
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {}
+                } else {
+                    bytes = java.io.File(path).length()
+                }
+                if (bytes > 0) {
+                    val kb = bytes / 1024
+                    fileSize = if (kb > 1024) "${kb / 1024} MB" else "$kb KB"
+                } else {
+                    fileSize = "Unknown Size"
+                }
+            }
+        }
+
+        val isLinked = !contextMenuFile!!.filePath.startsWith(context.filesDir.absolutePath + "/library")
+        val dateAdded = java.text.SimpleDateFormat("MMM dd, yyyy", java.util.Locale.getDefault()).format(java.util.Date(contextMenuFile!!.addedAt))
+
         ModalBottomSheet(
             onDismissRequest = { contextMenuFile = null; contextMenuFileShelfId = null },
             sheetState = sheetState,
@@ -2346,7 +2379,7 @@ fun HomeScreen(
                     ) {
                         val icon = when(contextMenuFile!!.format) {
                             "PDF" -> androidx.compose.material.icons.Icons.Default.PictureAsPdf
-                            "EPUB" -> androidx.compose.material.icons.Icons.Default.MenuBook
+                            "EPUB" -> androidx.compose.material.icons.Icons.Default.Menu
                             "TXT" -> androidx.compose.material.icons.Icons.Default.Description
                             else -> androidx.compose.material.icons.Icons.Default.InsertDriveFile
                         }
@@ -2363,10 +2396,25 @@ fun HomeScreen(
                         )
                         val totalStr = if (contextMenuFile!!.totalPages > 0) " • ${contextMenuFile!!.totalPages} Pages" else ""
                         Text(
-                            text = "${contextMenuFile!!.format}$totalStr",
+                            text = "${contextMenuFile!!.format}$totalStr • $fileSize",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = if (isLinked) androidx.compose.material.icons.Icons.Default.Link else androidx.compose.material.icons.Icons.Default.Upload,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "${if (isLinked) "Linked" else "Imported"} • Added $dateAdded",
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
 
@@ -2516,7 +2564,7 @@ fun HomeScreen(
                     if (contextMenuFile!!.format == "PDF") {
                         ListItem(
                             headlineContent = { Text("Convert to EPUB", color = MaterialTheme.colorScheme.tertiary) },
-                            leadingContent = { Icon(Icons.Default.MenuBook, contentDescription = null, tint = MaterialTheme.colorScheme.tertiary) },
+                            leadingContent = { Icon(Icons.Default.Menu, contentDescription = null, tint = MaterialTheme.colorScheme.tertiary) },
                             modifier = Modifier.clickable {
                                 viewModel.convertPdfToEpub(contextMenuFile!!)
                                 contextMenuFile = null; contextMenuFileShelfId = null
