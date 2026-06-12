@@ -502,84 +502,33 @@ class FileRepository(private val context: Context, private val dao: InfeReadDao)
         var autoThumbnailUri: String? = null
         val contentResolver = context.contentResolver
 
-        val internalLibDir = File(context.filesDir, "library")
-        if (!internalLibDir.exists()) internalLibDir.mkdirs()
-        
-        val extension = when(format) {
-            "PDF" -> ".pdf"
-            "EPUB" -> ".epub"
-            "TXT" -> ".txt"
-            "CODING" -> ".txt"
-            "CBZ" -> ".cbz"
-            "CBR" -> ".cbr"
-            "CB7" -> ".cb7"
-            "IMAGE" -> ".jpg"
-            else -> ""
+        val canPersist = try {
+            contentResolver.takePersistableUriPermission(
+                newUri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+            )
+            true
+        } catch (e: SecurityException) {
+            false
         }
-        val permanentFile = File(internalLibDir, "${System.currentTimeMillis()}_${file.title.replace(" ", "_")}$extension")
 
-        try {
-            contentResolver.openInputStream(newUri)?.use { input ->
-                FileOutputStream(permanentFile).use { output ->
-                    input.copyTo(output)
-                }
-            }
+        val finalPath: String
 
-            if (format == "IMAGE") {
-                val pfd = contentResolver.openFileDescriptor(newUri, "r")
-                if (pfd != null) {
-                    val thumbDir = File(context.filesDir, "thumbnails")
-                    if (!thumbDir.exists()) thumbDir.mkdirs()
-                    val thumbFile = File(thumbDir, "thumb_${System.currentTimeMillis()}.jpg")
-                    val options = android.graphics.BitmapFactory.Options()
-                    options.inJustDecodeBounds = true
-                    android.graphics.BitmapFactory.decodeFileDescriptor(pfd.fileDescriptor, null, options)
-                    options.inSampleSize = calculateInSampleSize(options, 300, 400)
-                    options.inJustDecodeBounds = false
-                    val bitmap = android.graphics.BitmapFactory.decodeFileDescriptor(pfd.fileDescriptor, null, options)
-                    if (bitmap != null) {
-                        FileOutputStream(thumbFile).use { out ->
-                            bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 80, out)
-                        }
-                        autoThumbnailUri = thumbFile.absolutePath
-                    }
-                    pfd.close()
-                }
-            } else if (format == "PDF" || format == "EPUB" || format == "CBZ" || format == "CBR" || format == "CB7") {
-                if (format == "PDF") {
-                    val pfd = android.os.ParcelFileDescriptor.open(permanentFile, android.os.ParcelFileDescriptor.MODE_READ_ONLY)
-                    val renderer = android.graphics.pdf.PdfRenderer(pfd)
-                    if (renderer.pageCount > 0) {
-                        val page = renderer.openPage(0)
-                        val bitmap = android.graphics.Bitmap.createBitmap(
-                            (page.width * 1.5f).toInt().coerceAtMost(800),
-                            (page.height * 1.5f).toInt().coerceAtMost(1200),
-                            android.graphics.Bitmap.Config.ARGB_8888
-                        )
-                        bitmap.eraseColor(android.graphics.Color.WHITE)
-                        page.render(bitmap, null, null, android.graphics.pdf.PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                        page.close()
-                        renderer.close()
-                        pfd.close()
-                        
-                        val thumbDir = File(context.filesDir, "thumbnails")
-                        if (!thumbDir.exists()) thumbDir.mkdirs()
-                        val thumbFile = File(thumbDir, "thumb_${System.currentTimeMillis()}.jpg")
-                        FileOutputStream(thumbFile).use { out ->
-                            bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 80, out)
-                        }
-                        autoThumbnailUri = thumbFile.absolutePath
-                    }
-                } else if (format == "EPUB") {
-                    val extractDir = File(context.cacheDir, "epub_${System.currentTimeMillis()}")
+        if (canPersist) {
+            finalPath = newUri.toString()
+            try {
+                if (format == "EPUB") {
+                    val extractDir = File(context.cacheDir, "epub_thumb_${System.currentTimeMillis()}")
                     try {
-                        if (com.infer.inferead.utils.ArchiveExtractor.extractArchive(permanentFile.absolutePath, extractDir, "EPUB")) {
+                        val tempEpub = File(context.cacheDir, "tmp_link_${System.currentTimeMillis()}.epub")
+                        contentResolver.openInputStream(newUri)?.use { input ->
+                            FileOutputStream(tempEpub).use { out -> input.copyTo(out) }
+                        }
+                        if (com.infer.inferead.utils.ArchiveExtractor.extractArchive(tempEpub.absolutePath, extractDir, "EPUB")) {
                             val epubBook = com.infer.inferead.utils.EpubParser.parseEpub(extractDir)
                             if (epubBook?.coverImagePath != null) {
                                 val thumbDir = File(context.filesDir, "thumbnails")
                                 if (!thumbDir.exists()) thumbDir.mkdirs()
                                 val thumbFile = File(thumbDir, "thumb_${System.currentTimeMillis()}.jpg")
-                                
                                 val options = android.graphics.BitmapFactory.Options()
                                 options.inJustDecodeBounds = true
                                 android.graphics.BitmapFactory.decodeFile(epubBook.coverImagePath, options)
@@ -594,18 +543,174 @@ class FileRepository(private val context: Context, private val dao: InfeReadDao)
                                 }
                             }
                         }
+                        tempEpub.delete()
                     } finally {
                         extractDir.deleteRecursively()
                     }
+                } else if (format == "PDF") {
+                    val pfd = contentResolver.openFileDescriptor(newUri, "r")
+                    if (pfd != null) {
+                        val renderer = android.graphics.pdf.PdfRenderer(pfd)
+                        if (renderer.pageCount > 0) {
+                            val page = renderer.openPage(0)
+                            val bitmap = android.graphics.Bitmap.createBitmap(
+                                (page.width * 1.5f).toInt().coerceAtMost(800),
+                                (page.height * 1.5f).toInt().coerceAtMost(1200),
+                                android.graphics.Bitmap.Config.ARGB_8888
+                            )
+                            bitmap.eraseColor(android.graphics.Color.WHITE)
+                            page.render(bitmap, null, null, android.graphics.pdf.PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                            page.close()
+                            renderer.close()
+                            
+                            val thumbDir = File(context.filesDir, "thumbnails")
+                            if (!thumbDir.exists()) thumbDir.mkdirs()
+                            val thumbFile = File(thumbDir, "thumb_${System.currentTimeMillis()}.jpg")
+                            FileOutputStream(thumbFile).use { out ->
+                                bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 80, out)
+                            }
+                            autoThumbnailUri = thumbFile.absolutePath
+                        }
+                        pfd.close()
+                    }
                 } else if (format == "CBZ" || format == "CBR" || format == "CB7") {
-                    autoThumbnailUri = extractComicThumbnail(permanentFile, format)
+                    val tempComic = File(context.cacheDir, "tmp_comic_${System.currentTimeMillis()}.${format.lowercase()}")
+                    contentResolver.openInputStream(newUri)?.use { input ->
+                        FileOutputStream(tempComic).use { out -> input.copyTo(out) }
+                    }
+                    autoThumbnailUri = extractComicThumbnail(tempComic, format)
+                    tempComic.delete()
+                } else if (format == "IMAGE") {
+                    val pfd = contentResolver.openFileDescriptor(newUri, "r")
+                    if (pfd != null) {
+                        val thumbDir = File(context.filesDir, "thumbnails")
+                        if (!thumbDir.exists()) thumbDir.mkdirs()
+                        val thumbFile = File(thumbDir, "thumb_${System.currentTimeMillis()}.jpg")
+                        val options = android.graphics.BitmapFactory.Options()
+                        options.inJustDecodeBounds = true
+                        android.graphics.BitmapFactory.decodeFileDescriptor(pfd.fileDescriptor, null, options)
+                        options.inSampleSize = calculateInSampleSize(options, 300, 400)
+                        options.inJustDecodeBounds = false
+                        val bitmap = android.graphics.BitmapFactory.decodeFileDescriptor(pfd.fileDescriptor, null, options)
+                        if (bitmap != null) {
+                            FileOutputStream(thumbFile).use { out ->
+                                bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 80, out)
+                            }
+                            autoThumbnailUri = thumbFile.absolutePath
+                        }
+                        pfd.close()
+                    }
                 }
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
+        } else {
+            val internalLibDir = File(context.filesDir, "library")
+            if (!internalLibDir.exists()) internalLibDir.mkdirs()
+            
+            val extension = when(format) {
+                "PDF" -> ".pdf"
+                "EPUB" -> ".epub"
+                "TXT" -> ".txt"
+                "CODING" -> ".txt"
+                "CBZ" -> ".cbz"
+                "CBR" -> ".cbr"
+                "CB7" -> ".cb7"
+                "IMAGE" -> ".jpg"
+                else -> ""
+            }
+            val permanentFile = File(internalLibDir, "${System.currentTimeMillis()}_${file.title.replace(" ", "_")}$extension")
+
+            try {
+                contentResolver.openInputStream(newUri)?.use { input ->
+                    FileOutputStream(permanentFile).use { output ->
+                        input.copyTo(output)
+                    }
+                }
+                
+                if (format == "IMAGE") {
+                    val pfd = contentResolver.openFileDescriptor(newUri, "r")
+                    if (pfd != null) {
+                        val thumbDir = File(context.filesDir, "thumbnails")
+                        if (!thumbDir.exists()) thumbDir.mkdirs()
+                        val thumbFile = File(thumbDir, "thumb_${System.currentTimeMillis()}.jpg")
+                        val options = android.graphics.BitmapFactory.Options()
+                        options.inJustDecodeBounds = true
+                        android.graphics.BitmapFactory.decodeFileDescriptor(pfd.fileDescriptor, null, options)
+                        options.inSampleSize = calculateInSampleSize(options, 300, 400)
+                        options.inJustDecodeBounds = false
+                        val bitmap = android.graphics.BitmapFactory.decodeFileDescriptor(pfd.fileDescriptor, null, options)
+                        if (bitmap != null) {
+                            FileOutputStream(thumbFile).use { out ->
+                                bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 80, out)
+                            }
+                            autoThumbnailUri = thumbFile.absolutePath
+                        }
+                        pfd.close()
+                    }
+                } else if (format == "PDF" || format == "EPUB" || format == "CBZ" || format == "CBR" || format == "CB7") {
+                    if (format == "PDF") {
+                        val pfd = android.os.ParcelFileDescriptor.open(permanentFile, android.os.ParcelFileDescriptor.MODE_READ_ONLY)
+                        val renderer = android.graphics.pdf.PdfRenderer(pfd)
+                        if (renderer.pageCount > 0) {
+                            val page = renderer.openPage(0)
+                            val bitmap = android.graphics.Bitmap.createBitmap(
+                                (page.width * 1.5f).toInt().coerceAtMost(800),
+                                (page.height * 1.5f).toInt().coerceAtMost(1200),
+                                android.graphics.Bitmap.Config.ARGB_8888
+                            )
+                            bitmap.eraseColor(android.graphics.Color.WHITE)
+                            page.render(bitmap, null, null, android.graphics.pdf.PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                            page.close()
+                            renderer.close()
+                            pfd.close()
+                            
+                            val thumbDir = File(context.filesDir, "thumbnails")
+                            if (!thumbDir.exists()) thumbDir.mkdirs()
+                            val thumbFile = File(thumbDir, "thumb_${System.currentTimeMillis()}.jpg")
+                            FileOutputStream(thumbFile).use { out ->
+                                bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 80, out)
+                            }
+                            autoThumbnailUri = thumbFile.absolutePath
+                        }
+                    } else if (format == "EPUB") {
+                        val extractDir = File(context.cacheDir, "epub_${System.currentTimeMillis()}")
+                        try {
+                            if (com.infer.inferead.utils.ArchiveExtractor.extractArchive(permanentFile.absolutePath, extractDir, "EPUB")) {
+                                val epubBook = com.infer.inferead.utils.EpubParser.parseEpub(extractDir)
+                                if (epubBook?.coverImagePath != null) {
+                                    val thumbDir = File(context.filesDir, "thumbnails")
+                                    if (!thumbDir.exists()) thumbDir.mkdirs()
+                                    val thumbFile = File(thumbDir, "thumb_${System.currentTimeMillis()}.jpg")
+                                    
+                                    val options = android.graphics.BitmapFactory.Options()
+                                    options.inJustDecodeBounds = true
+                                    android.graphics.BitmapFactory.decodeFile(epubBook.coverImagePath, options)
+                                    options.inSampleSize = calculateInSampleSize(options, 300, 400)
+                                    options.inJustDecodeBounds = false
+                                    val bitmap = android.graphics.BitmapFactory.decodeFile(epubBook.coverImagePath, options)
+                                    if (bitmap != null) {
+                                        FileOutputStream(thumbFile).use { out ->
+                                            bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 80, out)
+                                        }
+                                        autoThumbnailUri = thumbFile.absolutePath
+                                    }
+                                }
+                            }
+                        } finally {
+                            extractDir.deleteRecursively()
+                        }
+                    } else if (format == "CBZ" || format == "CBR" || format == "CB7") {
+                        autoThumbnailUri = extractComicThumbnail(permanentFile, format)
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+            finalPath = permanentFile.absolutePath
         }
 
-        dao.updateFilePath(fileId, permanentFile.absolutePath)
+        dao.updateFilePath(fileId, finalPath)
         if (autoThumbnailUri != null) {
             dao.updateThumbnail(fileId, autoThumbnailUri)
         }
