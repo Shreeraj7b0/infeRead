@@ -1868,6 +1868,12 @@ fun EPUBReader(
         
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
             if (parsed != null && parsed.spineFiles.isNotEmpty()) {
+                val script = when {
+                    parsed.hasDevanagari && parsed.hasLatin -> "MIXED"
+                    parsed.hasDevanagari -> "DEVANAGARI"
+                    else -> "LATIN"
+                }
+                viewModel?.setEpubScriptType(script)
                 epubBook = parsed
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                     // Build TOC title map from the EPUB's NCX or nav file

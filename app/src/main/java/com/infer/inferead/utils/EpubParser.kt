@@ -10,7 +10,9 @@ data class EpubBook(
     val spineFiles: List<String>,
     val opfDir: String,
     val isFixedLayout: Boolean = false,
-    val isArchiveOrg: Boolean = false
+    val isArchiveOrg: Boolean = false,
+    val hasDevanagari: Boolean = false,
+    val hasLatin: Boolean = false
 )
 
 object EpubParser {
@@ -186,7 +188,22 @@ object EpubParser {
                 }
             }
             
-            val rawEpubBook = EpubBook(title, coverImagePath, spineFiles, opfDir.absolutePath, isFixedLayout, isArchiveOrg)
+            var hasDevanagari = false
+            var hasLatin = false
+            val devanagariRegex = Regex("[\\u0900-\\u097F]")
+            val latinRegex = Regex("[a-zA-Z]")
+            
+            for (i in 0 until minOf(3, spineFiles.size)) {
+                try {
+                    val text = File(spineFiles[i]).readText()
+                    val stripped = text.replace(Regex("<[^>]*>"), "")
+                    if (!hasDevanagari && devanagariRegex.containsMatchIn(stripped)) hasDevanagari = true
+                    if (!hasLatin && latinRegex.containsMatchIn(stripped)) hasLatin = true
+                    if (hasDevanagari && hasLatin) break
+                } catch (e: Exception) {}
+            }
+            
+            val rawEpubBook = EpubBook(title, coverImagePath, spineFiles, opfDir.absolutePath, isFixedLayout, isArchiveOrg, hasDevanagari, hasLatin)
             return EpubSanitizer.sanitizeAndSplit(rawEpubBook, opfDoc)
             
         } catch (e: Exception) {

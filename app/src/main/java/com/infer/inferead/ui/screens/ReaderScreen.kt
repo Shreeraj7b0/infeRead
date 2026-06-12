@@ -2140,18 +2140,7 @@ fun ReaderScreen(
                     
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    val scriptType = remember(file.title) {
-                        val text = file.title
-                        val devanagariRegex = Regex("[\\u0900-\\u097F]")
-                        val latinRegex = Regex("[a-zA-Z]")
-                        val hasDevanagari = devanagariRegex.containsMatchIn(text)
-                        val hasLatin = latinRegex.containsMatchIn(text)
-                        when {
-                            hasDevanagari && hasLatin -> "MIXED"
-                            hasDevanagari -> "DEVANAGARI"
-                            else -> "LATIN"
-                        }
-                    }
+                    val scriptType by viewModel.epubScriptType.collectAsState()
 
                     val latinFonts = listOf(
                         "SansSerif" to FontFamily.SansSerif,

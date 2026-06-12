@@ -846,7 +846,7 @@ fun SettingsScreen(
                       "E-Books" to listOf("EPUB"),
                       "Documents" to listOf("PDF", "TXT", "DOC", "DOCX"),
                       "Comics & Manga" to listOf("CBZ", "CBR", "CB7"),
-                      "Source Code" to listOf("MD", "PY", "C", "JAVA", "JS", "CSS"),
+                      "Source Code" to listOf("MD", "PY", "C", "CPP", "JAVA", "JS", "CSS", "HTML", "XML", "JSON"),
                       "Images" to listOf("JPG", "PNG", "WEBP", "HEIC", "HEIF", "BMP", "SVG")
                   )
                   val pagerState = androidx.compose.foundation.pager.rememberPagerState(pageCount = { sections.size }, initialPage = 0)

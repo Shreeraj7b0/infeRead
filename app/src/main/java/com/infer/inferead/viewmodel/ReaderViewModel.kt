@@ -86,6 +86,12 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     private val _initialTodayMinutes = MutableStateFlow(0)
     val initialTodayMinutes: StateFlow<Int> = _initialTodayMinutes.asStateFlow()
 
+    private val _targetVerticalProgress = kotlinx.coroutines.flow.MutableStateFlow<Float?>(null)
+    val targetVerticalProgress = _targetVerticalProgress.asStateFlow()
+    
+    private val _epubScriptType = kotlinx.coroutines.flow.MutableStateFlow("LATIN")
+    val epubScriptType = _epubScriptType.asStateFlow()
+
     private val _goalMinutes = MutableStateFlow(15)
     val goalMinutes: StateFlow<Int> = _goalMinutes.asStateFlow()
 
@@ -155,7 +161,14 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
             
             if (formatGroup == "pdf_cbz" && file.format == "PDF") {
                 com.tom_roush.pdfbox.android.PDFBoxResourceLoader.init(context)
-                val document = com.tom_roush.pdfbox.pdmodel.PDDocument.load(java.io.File(file.filePath))
+                val document = if (file.filePath.startsWith("content://")) {
+                    val uri = android.net.Uri.parse(file.filePath)
+                    context.contentResolver.openInputStream(uri)?.use { input ->
+                        com.tom_roush.pdfbox.pdmodel.PDDocument.load(input)
+                    } ?: return
+                } else {
+                    com.tom_roush.pdfbox.pdmodel.PDDocument.load(java.io.File(file.filePath))
+                }
                 val stripper = PDFSearchStripper(query)
                 
                 for (i in 1..document.numberOfPages) {
@@ -189,7 +202,14 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                 }
                 document.close()
             } else if (formatGroup == "txt_doc" || formatGroup == "coding") {
-                val text = java.io.File(file.filePath).readText()
+                val text = if (file.filePath.startsWith("content://")) {
+                    val uri = android.net.Uri.parse(file.filePath)
+                    context.contentResolver.openInputStream(uri)?.use { input ->
+                        input.reader().readText()
+                    } ?: return
+                } else {
+                    java.io.File(file.filePath).readText()
+                }
                 var idx = text.indexOf(query, ignoreCase = true)
                 var matchIdx = 0
                 while (idx >= 0 && results.size < 150) {
@@ -403,6 +423,10 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     fun setJustifyText(justify: Boolean) {
         _settings.value = _settings.value.copy(justifyText = justify)
         saveSettings()
+    }
+    
+    fun setEpubScriptType(type: String) { 
+        _epubScriptType.value = type
     }
 
     fun loadFile(fileId: Int) {
