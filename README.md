@@ -2,6 +2,8 @@
 
 A feature-rich Android reading app built with Jetpack Compose. Supports multiple file formats, bookshelves, checklists, online sources, reading statistics, home-screen widgets, and a fully customisable reader experience.
 
+_Made with Antigravity_
+
 ---
 
 ## Table of Contents
