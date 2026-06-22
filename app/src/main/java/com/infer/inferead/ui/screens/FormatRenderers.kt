@@ -36,8 +36,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Icon
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Map
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -97,20 +100,94 @@ import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.ui.composed
 import kotlinx.coroutines.launch
 
+class ZoomState {
+    var scale by androidx.compose.runtime.mutableFloatStateOf(1f)
+    var offsetX by androidx.compose.runtime.mutableFloatStateOf(0f)
+    var offsetY by androidx.compose.runtime.mutableFloatStateOf(0f)
+    var isInteracting by androidx.compose.runtime.mutableStateOf(false)
+    val animX = androidx.compose.animation.core.Animatable(0f)
+    val animY = androidx.compose.animation.core.Animatable(0f)
+
+    suspend fun reset() {
+        scale = 1f
+        offsetX = 0f
+        offsetY = 0f
+        animX.snapTo(0f)
+        animY.snapTo(0f)
+    }
+}
+
+@Composable
+fun rememberZoomState() = androidx.compose.runtime.remember { ZoomState() }
+
+@Composable
+fun ZoomOverlay(zoomState: ZoomState, modifier: Modifier = Modifier) {
+    var showOverlay by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    
+    androidx.compose.runtime.LaunchedEffect(zoomState.scale, zoomState.offsetX, zoomState.offsetY, zoomState.isInteracting) {
+        if (zoomState.scale > 1.01f) {
+            showOverlay = true
+            if (!zoomState.isInteracting) {
+                kotlinx.coroutines.delay(500)
+                showOverlay = false
+            }
+        } else {
+            showOverlay = false
+        }
+    }
+    
+    val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
+    androidx.compose.animation.AnimatedVisibility(
+        visible = showOverlay,
+        enter = androidx.compose.animation.fadeIn(),
+        exit = androidx.compose.animation.fadeOut(),
+        modifier = modifier
+            .padding(top = androidx.compose.foundation.layout.WindowInsets.systemBars.asPaddingValues().calculateTopPadding() + 58.dp)
+    ) {
+        androidx.compose.material3.Surface(
+            shape = androidx.compose.foundation.shape.CircleShape,
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f)
+        ) {
+            androidx.compose.foundation.layout.Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(horizontal = 15.dp, vertical = 8.dp)
+            ) {
+                Text(
+                    "${(zoomState.scale * 100).toInt()}%",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                androidx.compose.foundation.layout.Spacer(Modifier.width(10.dp))
+                IconButton(
+                    onClick = { coroutineScope.launch { zoomState.reset() } },
+                    modifier = Modifier.size(30.dp)
+                ) {
+                    Icon(
+                        ZoomOutMapIcon,
+                        contentDescription = "Zoom Out",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
 fun Modifier.zoomable(
+    state: ZoomState? = null,
+    contentAspectRatio: Float? = null,
     onTransform: (Float, androidx.compose.ui.geometry.Offset, Boolean) -> Unit
 ) = composed {
+    val actualState = state ?: rememberZoomState()
     val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
-    val animX = androidx.compose.runtime.remember { androidx.compose.animation.core.Animatable(0f) }
-    val animY = androidx.compose.runtime.remember { androidx.compose.animation.core.Animatable(0f) }
-    var scale by androidx.compose.runtime.remember { androidx.compose.runtime.mutableFloatStateOf(1f) }
 
     androidx.compose.runtime.LaunchedEffect(Unit) {
         androidx.compose.runtime.snapshotFlow { 
-            androidx.compose.ui.geometry.Offset(animX.value, animY.value) 
+            androidx.compose.ui.geometry.Offset(actualState.animX.value, actualState.animY.value) 
         }.collect { offset ->
-            if (animX.isRunning || animY.isRunning) {
-                onTransform(scale, offset, scale > 1.01f)
+            if (actualState.animX.isRunning || actualState.animY.isRunning) {
+                onTransform(actualState.scale, offset, actualState.scale > 1.01f)
             }
         }
     }
@@ -118,33 +195,55 @@ fun Modifier.zoomable(
     this.pointerInput(Unit) {
         awaitEachGesture {
             awaitFirstDown(requireUnconsumed = false)
+            actualState.isInteracting = true
             coroutineScope.launch { 
-                animX.stop()
-                animY.stop() 
+                actualState.animX.stop()
+                actualState.animY.stop() 
             }
             val velocityTracker = androidx.compose.ui.input.pointer.util.VelocityTracker()
+            var wasPinching = false
             do {
                 val event = awaitPointerEvent()
                 val pointers = event.changes.size
                 
                 if (pointers > 1) {
+                    wasPinching = true
                     val zoom = event.calculateZoom()
                     val pan = event.calculatePan()
                     val centroid = event.calculateCentroid(useCurrent = false)
-                    scale = (scale * zoom).coerceIn(1f, 5f)
-                    val isZoomed = scale > 1.01f
+                    val newScale = (actualState.scale * zoom).coerceIn(1f, 5f)
+                    val actualZoom = if (actualState.scale > 0f) newScale / actualState.scale else 1f
+                    actualState.scale = newScale
+                    val isZoomed = actualState.scale > 1.01f
+                    
                     val size = this.size
+                    val layoutAspect = size.width.toFloat() / size.height.toFloat()
+                    var contentWidth = size.width.toFloat()
+                    var contentHeight = size.height.toFloat()
+                    if (contentAspectRatio != null) {
+                        if (contentAspectRatio > layoutAspect) {
+                            contentHeight = contentWidth / contentAspectRatio
+                        } else {
+                            contentWidth = contentHeight * contentAspectRatio
+                        }
+                    }
+
                     val pivot = androidx.compose.ui.geometry.Offset(size.width / 2f, size.height / 2f)
-                    val dX = centroid.x - pivot.x - animX.value
-                    val dY = centroid.y - pivot.y - animY.value
+                    val dX = centroid.x - pivot.x - actualState.animX.value
+                    val dY = centroid.y - pivot.y - actualState.animY.value
                     
-                    var newX = animX.value + pan.x - dX * (zoom - 1f)
-                    var newY = animY.value + pan.y - dY * (zoom - 1f)
+                    var newX = actualState.animX.value
+                    var newY = actualState.animY.value
                     
-                    val maxX = (size.width * (scale - 1f)) / 2f
-                    val maxY = (size.height * (scale - 1f)) / 2f
+                    if (!(actualState.scale == 5f && zoom > 1f)) {
+                        newX = actualState.animX.value + pan.x - dX * (actualZoom - 1f)
+                        newY = actualState.animY.value + pan.y - dY * (actualZoom - 1f)
+                    }
                     
-                    if (scale <= 1.0f) {
+                    val maxX = maxOf(0f, (contentWidth * actualState.scale - size.width) / 2f)
+                    val maxY = maxOf(0f, (contentHeight * actualState.scale - size.height) / 2f)
+                    
+                    if (actualState.scale <= 1.0f) {
                         newX = 0f
                         newY = 0f
                     } else {
@@ -153,44 +252,78 @@ fun Modifier.zoomable(
                     }
                     
                     coroutineScope.launch {
-                        animX.snapTo(newX)
-                        animY.snapTo(newY)
-                        animX.updateBounds(-maxX, maxX)
-                        animY.updateBounds(-maxY, maxY)
+                        actualState.animX.snapTo(newX)
+                        actualState.animY.snapTo(newY)
+                        actualState.animX.updateBounds(-maxX, maxX)
+                        actualState.animY.updateBounds(-maxY, maxY)
                     }
-                    onTransform(scale, androidx.compose.ui.geometry.Offset(newX, newY), isZoomed)
+                    onTransform(actualState.scale, androidx.compose.ui.geometry.Offset(newX, newY), isZoomed)
                     event.changes.forEach { it.consume() }
-                } else if (scale > 1.01f && pointers == 1) {
-                    val change = event.changes.first()
-                    velocityTracker.addPosition(change.uptimeMillis, change.position)
-                    val pan = event.calculatePan()
-                    
-                    val size = this.size
-                    val maxX = (size.width * (scale - 1f)) / 2f
-                    val maxY = (size.height * (scale - 1f)) / 2f
-                    
-                    val newX = (animX.value + pan.x).coerceIn(-maxX, maxX)
-                    val newY = (animY.value + pan.y).coerceIn(-maxY, maxY)
-                    
-                    coroutineScope.launch {
-                        animX.snapTo(newX)
-                        animY.snapTo(newY)
-                        animX.updateBounds(-maxX, maxX)
-                        animY.updateBounds(-maxY, maxY)
+                } else if (pointers == 1) {
+                    if (wasPinching) {
+                        event.changes.forEach { it.consume() }
+                    } else if (actualState.scale > 1.01f) {
+                        val change = event.changes.first()
+                        if (!change.isConsumed) {
+                            velocityTracker.addPosition(change.uptimeMillis, change.position)
+                            val pan = event.calculatePan()
+                            
+                            val size = this.size
+                            val layoutAspect = size.width.toFloat() / size.height.toFloat()
+                            var contentWidth = size.width.toFloat()
+                            var contentHeight = size.height.toFloat()
+                            if (contentAspectRatio != null) {
+                                if (contentAspectRatio > layoutAspect) {
+                                    contentHeight = contentWidth / contentAspectRatio
+                                } else {
+                                    contentWidth = contentHeight * contentAspectRatio
+                                }
+                            }
+                            
+                            val maxX = maxOf(0f, (contentWidth * actualState.scale - size.width) / 2f)
+                            val maxY = maxOf(0f, (contentHeight * actualState.scale - size.height) / 2f)
+                            
+                            val oldX = actualState.animX.value
+                            val newX = (oldX + pan.x).coerceIn(-maxX, maxX)
+                            val newY = (actualState.animY.value + pan.y).coerceIn(-maxY, maxY)
+                            
+                            coroutineScope.launch {
+                                actualState.animX.snapTo(newX)
+                                actualState.animY.snapTo(newY)
+                                actualState.animX.updateBounds(-maxX, maxX)
+                                actualState.animY.updateBounds(-maxY, maxY)
+                            }
+                            onTransform(actualState.scale, androidx.compose.ui.geometry.Offset(newX, newY), true)
+                            val consumedX = newX - oldX
+                            if (kotlin.math.abs(consumedX) > 0.01f || pan.y != 0f) {
+                                event.changes.forEach { it.consume() }
+                            }
+                        }
                     }
-                    onTransform(scale, androidx.compose.ui.geometry.Offset(newX, newY), true)
-                    event.changes.forEach { it.consume() }
                 }
             } while (event.changes.any { it.pressed })
+            actualState.isInteracting = false
             
-            if (scale > 1.01f) {
+            if (!wasPinching && actualState.scale > 1.01f) {
                 val velocity = velocityTracker.calculateVelocity()
-                val decay = androidx.compose.animation.splineBasedDecay<Float>(this@pointerInput)
-                if (velocity.x != 0f) {
-                    coroutineScope.launch { animX.animateDecay(velocity.x, decay) }
-                }
-                if (velocity.y != 0f) {
-                    coroutineScope.launch { animY.animateDecay(velocity.y, decay) }
+                coroutineScope.launch {
+                    val size = this@pointerInput.size
+                    val layoutAspect = size.width.toFloat() / size.height.toFloat()
+                    var contentWidth = size.width.toFloat()
+                    var contentHeight = size.height.toFloat()
+                    if (contentAspectRatio != null) {
+                        if (contentAspectRatio > layoutAspect) {
+                            contentHeight = contentWidth / contentAspectRatio
+                        } else {
+                            contentWidth = contentHeight * contentAspectRatio
+                        }
+                    }
+                    val maxX = maxOf(0f, (contentWidth * actualState.scale - size.width) / 2f)
+                    val maxY = maxOf(0f, (contentHeight * actualState.scale - size.height) / 2f)
+                    
+                    val decay = androidx.compose.animation.splineBasedDecay<Float>(this@pointerInput)
+                    launch { actualState.animX.animateDecay(velocity.x, decay) }
+                    launch { actualState.animY.animateDecay(velocity.y, decay) }
                 }
             }
         }
@@ -374,8 +507,7 @@ fun PdfViewer(
             state = pagerState,
             modifier = Modifier.fillMaxSize()
         ) { page ->
-            var scale by remember { mutableFloatStateOf(1f) }
-            var offset by remember { mutableStateOf(Offset.Zero) }
+            val zoomState = rememberZoomState()
             var bitmap by remember { mutableStateOf<Bitmap?>(bitmapCache.get(page)) }
             val density = LocalDensity.current.density
             val cf = pageColorFilter()
@@ -389,9 +521,13 @@ fun PdfViewer(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .zoomable { newScale, newOffset, zoomed ->
-                        scale = newScale
-                        offset = newOffset
+                    .zoomable(
+                        state = zoomState,
+                        contentAspectRatio = if (bitmap != null) bitmap!!.width.toFloat() / bitmap!!.height.toFloat() else null
+                    ) { newScale, newOffset, zoomed ->
+                        zoomState.scale = newScale
+                        zoomState.offsetX = newOffset.x
+                        zoomState.offsetY = newOffset.y
                         isZoomed = zoomed
                     }
                     .pointerInput(Unit) {
@@ -409,8 +545,8 @@ fun PdfViewer(
                             .fillMaxSize()
                             .padding(horizontal = 4.dp)
                             .graphicsLayer {
-                                scaleX = scale; scaleY = scale
-                                translationX = offset.x; translationY = offset.y
+                                scaleX = zoomState.scale; scaleY = zoomState.scale
+                                translationX = zoomState.offsetX; translationY = zoomState.offsetY
                             }
                             .drawWithContent {
                                 drawContent()
@@ -463,6 +599,11 @@ fun PdfViewer(
                         contentAlignment = Alignment.Center
                     ) { Text("Loading...", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelSmall) }
                 }
+
+                ZoomOverlay(
+                    zoomState = zoomState,
+                    modifier = Modifier.align(Alignment.TopCenter)
+                )
             }
         }
     } else {
@@ -519,93 +660,154 @@ fun PdfViewer(
             }
         }
 
-        Box(modifier = Modifier.fillMaxSize()) {
-            LazyColumn(
-                state = listState,
-                modifier = Modifier.fillMaxSize()
-                // No flingBehavior override = default free scroll, no snapping
-            ) {
-                items(pdfRenderer.pageCount, key = { it }) { index ->
-                    var bitmap by remember { mutableStateOf<Bitmap?>(bitmapCache.get(index)) }
-                    var scale by remember { mutableFloatStateOf(1f) }
-                    var offset by remember { mutableStateOf(Offset.Zero) }
-                    val density = LocalDensity.current.density
-                    val cf = pageColorFilter()
+        val zoomState = rememberZoomState()
+        val coroutineScope = rememberCoroutineScope()
 
-                    LaunchedEffect(index) {
-                        if (bitmap == null) {
-                            bitmap = withContext(Dispatchers.IO) { renderPage(index, density) }
-                        }
-                    }
-
-                    if (bitmap != null) {
-                        Image(
-                            bitmap = bitmap!!.asImageBitmap(),
-                            contentDescription = "Page $index",
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp)
-                                .graphicsLayer {
-                                    scaleX = scale; scaleY = scale
-                                    translationX = offset.x; translationY = offset.y
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            val constraintsMaxWidth = maxWidth
+            
+            Box(modifier = Modifier
+                .fillMaxSize()
+                .pointerInput(Unit) {
+                    awaitEachGesture {
+                        awaitFirstDown(requireUnconsumed = false)
+                        zoomState.isInteracting = true
+                        var wasPinching = false
+                        do {
+                            // Intercept pinches before LazyColumn sees them!
+                            val event = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+                            val pointers = event.changes.size
+                            if (pointers > 1) {
+                                wasPinching = true
+                                val zoom = event.calculateZoom()
+                                val centroid = event.calculateCentroid(useCurrent = false)
+                                val pan = event.calculatePan()
+                                val newScale = (zoomState.scale * zoom).coerceIn(1f, 5f)
+                                
+                                if (newScale != zoomState.scale || pan.y != 0f) {
+                                    val deltaScrollLayout = centroid.y * (1f / zoomState.scale - 1f / newScale) - pan.y / newScale
+                                    val maxPan = size.width * newScale - size.width
+                                    
+                                    val pX = (centroid.x - zoomState.offsetX) / zoomState.scale
+                                    val newX = centroid.x - pX * newScale + pan.x
+                                    zoomState.offsetX = newX.coerceIn(-maxPan, 0f)
+                                    zoomState.scale = newScale
+                                    
+                                    if (deltaScrollLayout != 0f) {
+                                        listState.dispatchRawDelta(deltaScrollLayout)
+                                    }
                                 }
-                                .drawWithContent {
-                                    drawContent()
-                                    if (searchResults != null) {
-                                        val pageResults = searchResults.filter { it.chapterIndex == index }
-                                        if (pageResults.isNotEmpty()) {
-                                            val pageDim = pageDimensCache[index]
-                                            if (pageDim != null) {
-                                                val imgAspect = bitmap!!.width.toFloat() / bitmap!!.height.toFloat()
-                                                val layoutAspect = size.width / size.height
-                                                var drawWidth = size.width
-                                                var drawHeight = size.height
-                                                var startX = 0f
-                                                var startY = 0f
-                                                if (imgAspect > layoutAspect) {
-                                                    drawHeight = size.width / imgAspect
-                                                    startY = (size.height - drawHeight) / 2f
-                                                } else {
-                                                    drawWidth = size.height * imgAspect
-                                                    startX = (size.width - drawWidth) / 2f
-                                                }
-                                                
-                                                val scaleXHighlight = drawWidth / pageDim.width
-                                                val scaleYHighlight = drawHeight / pageDim.height
-                                                
-                                                for (res in pageResults) {
-                                                    res.rects?.forEach { r ->
-                                                        val isJumped = searchJumpIndex?.result?.matchIndex == res.matchIndex && searchJumpIndex?.result?.pageNumber == res.pageNumber
-                                                        val color = if (isJumped) androidx.compose.ui.graphics.Color(0x80FF9800) else androidx.compose.ui.graphics.Color(0x60FFFF00)
-                                                        drawRect(
-                                                            color = color,
-                                                            topLeft = androidx.compose.ui.geometry.Offset(startX + r.left * scaleXHighlight, startY + r.top * scaleYHighlight),
-                                                            size = androidx.compose.ui.geometry.Size(r.width() * scaleXHighlight, r.height() * scaleYHighlight)
-                                                        )
+                                event.changes.forEach { it.consume() }
+                            } else if (pointers == 1) {
+                                if (wasPinching) {
+                                    event.changes.forEach { it.consume() }
+                                } else if (zoomState.scale > 1.01f) {
+                                    val pan = event.calculatePan()
+                                    val size = this.size
+                                    val maxPan = size.width * zoomState.scale - size.width
+                                    zoomState.offsetX = (zoomState.offsetX + pan.x).coerceIn(-maxPan, 0f)
+                                    // Let LazyColumn consume vertical pan. Do not consume event here!
+                                }
+                            }
+                        } while (event.changes.any { it.pressed })
+                        zoomState.isInteracting = false
+                    }
+                }
+            ) {
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            scaleX = zoomState.scale
+                            scaleY = zoomState.scale
+                            translationX = zoomState.offsetX
+                            transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
+                        }
+                    // No flingBehavior override = default free scroll, no snapping
+                ) {
+                    items(pdfRenderer.pageCount, key = { it }) { index ->
+                        var bitmap by remember { mutableStateOf<Bitmap?>(bitmapCache.get(index)) }
+                        val density = LocalDensity.current.density
+                        val cf = pageColorFilter()
+
+                        LaunchedEffect(index) {
+                            if (bitmap == null) {
+                                bitmap = withContext(Dispatchers.IO) { renderPage(index, density) }
+                            }
+                        }
+
+                        if (bitmap != null) {
+                            Box(
+                                modifier = Modifier.fillMaxWidth(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Image(
+                                    bitmap = bitmap!!.asImageBitmap(),
+                                    contentDescription = "Page $index",
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 4.dp)
+                                        .drawWithContent {
+                                            drawContent()
+                                            if (searchResults != null) {
+                                                val pageResults = searchResults.filter { it.chapterIndex == index }
+                                                if (pageResults.isNotEmpty()) {
+                                                    val pageDim = pageDimensCache[index]
+                                                    if (pageDim != null) {
+                                                        val imgAspect = bitmap!!.width.toFloat() / bitmap!!.height.toFloat()
+                                                        val layoutAspect = size.width / size.height
+                                                        var drawWidth = size.width
+                                                        var drawHeight = size.height
+                                                        var startX = 0f
+                                                        var startY = 0f
+                                                        if (imgAspect > layoutAspect) {
+                                                            drawHeight = size.width / imgAspect
+                                                            startY = (size.height - drawHeight) / 2f
+                                                        } else {
+                                                            drawWidth = size.height * imgAspect
+                                                            startX = (size.width - drawWidth) / 2f
+                                                        }
+                                                        
+                                                        val scaleXHighlight = drawWidth / pageDim.width
+                                                        val scaleYHighlight = drawHeight / pageDim.height
+                                                        
+                                                        for (res in pageResults) {
+                                                            res.rects?.forEach { r ->
+                                                                val isJumped = searchJumpIndex?.result?.matchIndex == res.matchIndex && searchJumpIndex?.result?.pageNumber == res.pageNumber
+                                                                val color = if (isJumped) androidx.compose.ui.graphics.Color(0x80FF9800) else androidx.compose.ui.graphics.Color(0x60FFFF00)
+                                                                drawRect(
+                                                                    color = color,
+                                                                    topLeft = androidx.compose.ui.geometry.Offset(startX + r.left * scaleXHighlight, startY + r.top * scaleYHighlight),
+                                                                    size = androidx.compose.ui.geometry.Size(r.width() * scaleXHighlight, r.height() * scaleYHighlight)
+                                                                )
+                                                            }
+                                                        }
                                                     }
                                                 }
                                             }
-                                        }
-                                    }
-                                }
-                                .zoomable { newScale, newOffset, zoomed ->
-                                    scale = newScale
-                                    offset = newOffset
-                                },
-                            contentScale = ContentScale.FillWidth,
-                            colorFilter = cf
-                        )
-                    } else {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .aspectRatio(0.70f)
-                                .padding(vertical = 4.dp)
-                                .background(androidx.compose.ui.graphics.Color.White),
-                            contentAlignment = Alignment.Center
-                        ) { Text("Loading...", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelSmall) }
+                                        },
+                                    contentScale = ContentScale.FillWidth,
+                                    colorFilter = cf
+                                )
+                            }
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .aspectRatio(0.70f)
+                                    .padding(vertical = 4.dp)
+                                    .background(androidx.compose.ui.graphics.Color.White),
+                                contentAlignment = Alignment.Center
+                            ) { Text("Loading...", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelSmall) }
+                        }
                     }
                 }
+
+                ZoomOverlay(
+                    zoomState = zoomState,
+                    modifier = Modifier.align(Alignment.TopCenter)
+                )
             }
 
             // Back to top FAB

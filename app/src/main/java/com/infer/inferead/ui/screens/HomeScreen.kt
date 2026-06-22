@@ -1905,7 +1905,7 @@ fun HomeScreen(
                                                                 )
                                                             } else {
                                                                 Text(
-                                                                    text = file.format, 
+                                                                    text = if (file.format == "CODING" || file.format == "TXT" || file.format == "TEXT") file.filePath.substringAfterLast('.', "").uppercase().takeIf { it.isNotEmpty() && it.length <= 4 } ?: file.format else file.format, 
                                                                     style = MaterialTheme.typography.titleMedium, 
                                                                     fontWeight = FontWeight.Bold,
                                                                     color = MaterialTheme.colorScheme.primary
@@ -2067,7 +2067,7 @@ fun HomeScreen(
                                     elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp)
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Default.List,
+                                        imageVector = Icons.Default.FilterList,
                                         contentDescription = "Sort By"
                                     )
                                 }
@@ -2247,7 +2247,7 @@ fun HomeScreen(
                         if (pagerState.currentPage == 0) {
                             FloatingActionButton(
                                 onClick = { 
-                                    filePickerLauncher.launch(arrayOf("application/pdf", "application/epub+zip", "text/plain", "image/png", "image/jpeg", "image/webp", "image/bmp", "image/heic", "image/heif", "application/rar", "application/x-rar-compressed", "application/zip", "application/x-cbz", "application/x-cbr", "application/x-7z-compressed"))
+                                    filePickerLauncher.launch(arrayOf("application/pdf", "application/epub+zip", "text/plain", "image/png", "image/jpeg", "image/webp", "image/bmp", "image/heic", "image/heif", "application/rar", "application/x-rar-compressed", "application/zip", "application/x-zip-compressed", "application/x-cbz", "application/x-cbr", "application/x-7z-compressed", "text/html", "text/css", "text/javascript", "application/javascript", "application/json", "text/xml", "application/xml", "text/x-c", "text/x-java-source", "text/x-python", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"))
                                 },
                                 modifier = Modifier.size(48.dp).bounceClick(),
                                 containerColor = MaterialTheme.colorScheme.primary,
@@ -2267,7 +2267,7 @@ fun HomeScreen(
                                     modifier = Modifier.size(48.dp).bounceClick(),
                                     elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp)
                                 ) {
-                                    Icon(Icons.Default.SyncAlt, contentDescription = "Assignment Mode")
+                                    Icon(com.infer.inferead.ui.components.docs_add_on, contentDescription = "Assignment Mode")
                                 }
                             }
                         }

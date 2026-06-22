@@ -278,6 +278,7 @@ fun ReaderScreen(
     var targetScrollAnnId by remember { mutableStateOf<Int?>(null) }
     var showPageAnnotationManager by remember { mutableStateOf(false) }
     var showScrubber by remember { mutableStateOf(false) }
+    var showBrowserPreview by remember { mutableStateOf(false) }
     var showPageCommentsDialog by remember { mutableStateOf(false) }
     var isTitleExpanded by remember { mutableStateOf(false) }
     val textScrollState = rememberScrollState()
@@ -1509,14 +1510,34 @@ fun ReaderScreen(
                     exit = if (settings.contrastMode == ContrastMode.EInk) ExitTransition.None else fadeOut(animationSpec = androidx.compose.animation.core.spring(stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow)),
                     modifier = Modifier.align(Alignment.BottomStart)
                 ) {
-                    FloatingActionButton(
-                        onClick = { showScrubber = !showScrubber },
-                        containerColor = barColor,
-                        contentColor = if (settings.contrastMode == ContrastMode.Dark) Color(0xFF9AB0E6) else MaterialTheme.colorScheme.primary,
-                        shape = CircleShape,
-                        modifier = Modifier.padding(bottom = 16.dp)
+                    Column(
+                        modifier = Modifier.padding(bottom = 16.dp, start = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Icon(Icons.Default.List, contentDescription = "Scrubber")
+                        val fileExt = java.io.File(currentFile?.filePath ?: "").extension.lowercase()
+                        val isHtmlJsCss = fileExt == "html" || fileExt == "htm" || fileExt == "css" || fileExt == "js"
+                        val isWebCode = currentFile?.format == "CODING" && isHtmlJsCss
+                        
+                        if (isWebCode) {
+                            FloatingActionButton(
+                                onClick = { showBrowserPreview = true },
+                                containerColor = barColor,
+                                contentColor = if (settings.contrastMode == ContrastMode.Dark) Color(0xFF9AB0E6) else MaterialTheme.colorScheme.primary,
+                                shape = CircleShape
+                            ) {
+                                Icon(com.infer.inferead.ui.components.code_xml, contentDescription = "Browser Preview")
+                            }
+                        }
+
+                        FloatingActionButton(
+                            onClick = { showScrubber = !showScrubber },
+                            containerColor = barColor,
+                            contentColor = if (settings.contrastMode == ContrastMode.Dark) Color(0xFF9AB0E6) else MaterialTheme.colorScheme.primary,
+                            shape = CircleShape
+                        ) {
+                            Icon(Icons.Default.List, contentDescription = "Scrubber")
+                        }
                     }
                 }
 
@@ -1871,6 +1892,306 @@ fun ReaderScreen(
         
         if (showGoalCelebration) {
             StarAnimationOverlay(onAnimationFinished = { showGoalCelebration = false })
+        }
+
+        if (showBrowserPreview && currentFile != null) {
+            val file = currentFile!!
+            val context = androidx.compose.ui.platform.LocalContext.current
+            var isDesktopMode by remember { mutableStateOf(false) }
+            var isBrowserDarkMode by remember { mutableStateOf(false) }
+            var contentLoaded by remember { mutableStateOf(false) }
+            var fileContent by remember { mutableStateOf<String?>(null) }
+            val fileExt = remember(file.filePath) {
+                java.io.File(file.filePath).extension.lowercase()
+            }
+            val isHtml = fileExt == "html" || fileExt == "htm"
+
+            // For all files, pre-read the content
+            LaunchedEffect(file.filePath) {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    try {
+                        fileContent = if (file.filePath.startsWith("content://")) {
+                            val uri = android.net.Uri.parse(file.filePath)
+                            context.contentResolver.openInputStream(uri)?.bufferedReader()?.readText() ?: ""
+                        } else {
+                            java.io.File(file.filePath).readText()
+                        }
+                    } catch (e: Exception) {
+                        fileContent = "// Error loading file: ${e.message}"
+                    }
+                }
+            }
+
+            Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+                if (!isHtml && fileContent == null) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        androidx.compose.material3.CircularProgressIndicator()
+                    }
+                } else {
+                    androidx.compose.ui.viewinterop.AndroidView(
+                        factory = { ctx ->
+                            android.webkit.WebView(ctx).apply {
+                                layoutParams = android.view.ViewGroup.LayoutParams(
+                                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                                    android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                                )
+                                this.settings.javaScriptEnabled = true
+                                this.settings.domStorageEnabled = true
+                                this.settings.allowFileAccess = true
+                                this.settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                                this.settings.setSupportZoom(true)
+                                this.settings.builtInZoomControls = true
+                                this.settings.displayZoomControls = false
+                                webChromeClient = android.webkit.WebChromeClient()
+                                webViewClient = object : android.webkit.WebViewClient() {
+                                    override fun onPageFinished(view: android.webkit.WebView?, url: String?) {
+                                        super.onPageFinished(view, url)
+                                        if (isBrowserDarkMode) {
+                                            view?.evaluateJavascript("""
+
+                                                (function() {
+                                                    var style = document.getElementById('browser-dark-mode-style');
+                                                    if (!style) {
+                                                        style = document.createElement('style');
+                                                        style.id = 'browser-dark-mode-style';
+                                                        style.innerHTML = 'html, body { background-color: #121212 !important; color: #E0E0E0 !important; } a { color: #BB86FC !important; }';
+                                                        document.head.appendChild(style);
+                                                    }
+                                                })();
+                                            """.trimIndent(), null)
+                                        }
+                                    }
+                                }
+
+                                // We must wait for the WebView to be fully laid out before loading
+                                this.addOnLayoutChangeListener(object : android.view.View.OnLayoutChangeListener {
+                                    override fun onLayoutChange(v: android.view.View, left: Int, top: Int, right: Int, bottom: Int, oldLeft: Int, oldTop: Int, oldRight: Int, oldBottom: Int) {
+                                        if (right - left > 0 && bottom - top > 0) {
+                                            v.removeOnLayoutChangeListener(this)
+                                            if (isHtml) {
+                                                var htmlStr = fileContent ?: ""
+                                                val viewportTag = "<meta name=\"viewport\" content=\"width=${if(isDesktopMode) "1024" else "device-width"}, initial-scale=1\">"
+                                                val centeringCss = "<style>html, body { min-height: 100vh; margin: 0; background-color: transparent; } canvas { display: block; margin: 0 auto; }</style>"
+                                                
+                                                if (!htmlStr.contains("<meta name=\"viewport\"", ignoreCase = true)) {
+                                                    htmlStr = htmlStr.replaceFirst("<head>", "<head>\n$viewportTag", ignoreCase = true)
+                                                }
+                                                htmlStr = htmlStr.replaceFirst("</head>", "$centeringCss\n</head>", ignoreCase = true)
+                                                if (!htmlStr.contains("</head>", ignoreCase = true)) {
+                                                    htmlStr = "$viewportTag\n$centeringCss\n$htmlStr"
+                                                }
+                                                
+                                                val baseUrl = if (file.filePath.startsWith("content://")) file.filePath else "file://" + file.filePath.substringBeforeLast("/") + "/"
+                                                loadDataWithBaseURL(baseUrl, htmlStr, "text/html", "UTF-8", null)
+                                            } else {
+                                        val isCss = fileExt == "css"
+                                        val isJs = fileExt == "js"
+                                        val htmlData = when {
+                                            isCss -> """
+                                                <!DOCTYPE html>
+                                                <html>
+                                                <head>
+                                                <meta name="viewport" content="width=device-width, initial-scale=1">
+                                                <style>
+                                                body { font-family: sans-serif; padding: 16px; }
+                                                ${fileContent}
+                                                </style>
+                                                </head>
+                                                <body>
+                                                <div class="preview-container">
+                                                    <h1>CSS Preview</h1>
+                                                    <p>This is a sample paragraph to demonstrate the CSS styles.</p>
+                                                    <button>Sample Button</button>
+                                                    <ul><li>Item 1</li><li>Item 2</li></ul>
+                                                </div>
+                                                </body>
+                                                </html>
+                                            """.trimIndent()
+                                            isJs -> """
+                                                <!DOCTYPE html>
+                                                <html>
+                                                <head>
+                                                <meta name="viewport" content="width=device-width, initial-scale=1">
+                                                <style>
+                                                body { font-family: monospace; background: #1e1e1e; color: #d4d4d4; padding: 16px; margin: 0; }
+                                                #console { white-space: pre-wrap; word-wrap: break-word; }
+                                                .log { color: #d4d4d4; }
+                                                .error { color: #f48771; }
+                                                .warn { color: #cca700; }
+                                                </style>
+                                                </head>
+                                                <body>
+                                                <div id="console"></div>
+                                                <script>
+                                                (function() {
+                                                    var cons = document.getElementById('console');
+                                                    function logMsg(type, args) {
+                                                        var msg = Array.from(args).join(' ');
+                                                        cons.innerHTML += '<div class="' + type + '">' + msg + '</div>';
+                                                    }
+                                                    var oldLog = console.log;
+                                                    console.log = function() { logMsg('log', arguments); oldLog.apply(console, arguments); };
+                                                    var oldErr = console.error;
+                                                    console.error = function() { logMsg('error', arguments); oldErr.apply(console, arguments); };
+                                                    var oldWarn = console.warn;
+                                                    console.warn = function() { logMsg('warn', arguments); oldWarn.apply(console, arguments); };
+                                                })();
+                                                </script>
+                                                <script>
+                                                try {
+                                                    ${fileContent}
+                                                } catch(e) {
+                                                    console.error(e);
+                                                }
+                                                </script>
+                                                </body>
+                                                </html>
+                                            """.trimIndent()
+                                            else -> fileContent ?: "Empty"
+                                        }
+                                        loadDataWithBaseURL("file:///android_asset/", htmlData, "text/html", "UTF-8", null)
+                                    }
+                                        }
+                                    }
+                                })
+                                tag = "loaded"
+                            }
+                        },
+                        update = { webView ->
+                            val currentTag = webView.tag as? String ?: ""
+                            val newTag = "${if (isDesktopMode) "desktop" else "mobile"}_${if (isBrowserDarkMode) "dark" else "light"}"
+                            if (currentTag != newTag) {
+                                webView.tag = newTag
+                                
+                                val wasDesktopMode = currentTag.startsWith("desktop")
+                                val desktopChanged = currentTag == "" || (isDesktopMode != wasDesktopMode)
+                                
+                                if (desktopChanged) {
+                                    if (isDesktopMode) {
+                                        webView.settings.userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+                                        webView.settings.useWideViewPort = true
+                                        webView.settings.loadWithOverviewMode = true
+                                        webView.evaluateJavascript("var vp = document.querySelector('meta[name=viewport]'); if(!vp) { vp = document.createElement('meta'); vp.name = 'viewport'; document.head.appendChild(vp); } vp.setAttribute('content', 'width=1024');", null)
+                                    } else {
+                                        webView.settings.userAgentString = android.webkit.WebSettings.getDefaultUserAgent(webView.context)
+                                        webView.settings.useWideViewPort = true
+                                        webView.settings.loadWithOverviewMode = true
+                                        webView.evaluateJavascript("var vp = document.querySelector('meta[name=viewport]'); if(!vp) { vp = document.createElement('meta'); vp.name = 'viewport'; document.head.appendChild(vp); } vp.setAttribute('content', 'width=device-width, initial-scale=1');", null)
+                                    }
+                                    // Actually apply the changes by reloading
+                                    if (isHtml) {
+                                        var htmlStr = fileContent ?: ""
+                                        val viewportTag = "<meta name=\"viewport\" content=\"width=${if(isDesktopMode) "1024" else "device-width"}, initial-scale=1\">"
+                                        val centeringCss = "<style>html, body { min-height: 100vh; margin: 0; background-color: transparent; } canvas { display: block; margin: 0 auto; }</style>"
+                                        
+                                        if (htmlStr.contains("<meta name=\"viewport\"", ignoreCase = true)) {
+                                            htmlStr = htmlStr.replace(Regex("<meta[^>]*name=[\"']viewport[\"'][^>]*>"), viewportTag)
+                                        } else {
+                                            htmlStr = htmlStr.replaceFirst("<head>", "<head>\n$viewportTag", ignoreCase = true)
+                                        }
+                                        htmlStr = htmlStr.replaceFirst("</head>", "$centeringCss\n</head>", ignoreCase = true)
+                                        if (!htmlStr.contains("</head>", ignoreCase = true)) {
+                                            htmlStr = "$viewportTag\n$centeringCss\n$htmlStr"
+                                        }
+                                        
+                                        val baseUrl = if (file.filePath.startsWith("content://")) file.filePath else "file://" + file.filePath.substringBeforeLast("/") + "/"
+                                        webView.loadDataWithBaseURL(baseUrl, htmlStr, "text/html", "UTF-8", null)
+                                    } else {
+                                        // For loadDataWithBaseURL, reload() is unreliable. Re-load the content!
+                                        val isCss = fileExt == "css"
+                                        val isJs = fileExt == "js"
+                                        val htmlData = when {
+                                            isCss -> "<!DOCTYPE html><html><head><meta name=\"viewport\" content=\"${if (isDesktopMode) "width=1024" else "width=device-width, initial-scale=1"}\"><style>body { font-family: sans-serif; padding: 16px; }\n$fileContent\n</style></head><body><div class=\"preview-container\"><h1>CSS Preview</h1><p>This is a sample paragraph to demonstrate the CSS styles.</p><button>Sample Button</button><ul><li>Item 1</li><li>Item 2</li></ul></div></body></html>"
+                                            isJs -> "<!DOCTYPE html><html><head><meta name=\"viewport\" content=\"${if (isDesktopMode) "width=1024" else "width=device-width, initial-scale=1"}\"><style>body { font-family: monospace; background: #1e1e1e; color: #d4d4d4; padding: 16px; margin: 0; } #console { white-space: pre-wrap; word-wrap: break-word; } .log { color: #d4d4d4; } .error { color: #f48771; } .warn { color: #cca700; }</style></head><body><div id=\"console\"></div><script>(function(){var cons=document.getElementById('console');function logMsg(type,args){var msg=Array.from(args).join(' ');cons.innerHTML+='<div class=\"'+type+'\">'+msg+'</div>';}var oldLog=console.log;console.log=function(){logMsg('log',arguments);oldLog.apply(console,arguments);};var oldErr=console.error;console.error=function(){logMsg('error',arguments);oldErr.apply(console,arguments);};var oldWarn=console.warn;console.warn=function(){logMsg('warn',arguments);oldWarn.apply(console,arguments);};})();</script><script>try{$fileContent}catch(e){console.error(e);}</script></body></html>"
+                                            else -> fileContent ?: "Empty"
+                                        }
+                                        webView.loadDataWithBaseURL("file:///android_asset/", htmlData, "text/html", "UTF-8", null)
+                                    }
+                                } else {
+                                    // Only dark mode changed, no need to reload, just inject or remove CSS
+                                    if (isBrowserDarkMode) {
+                                        webView.evaluateJavascript("""
+                                            (function() {
+                                                var style = document.getElementById('browser-dark-mode-style');
+                                                if (!style) {
+                                                    style = document.createElement('style');
+                                                    style.id = 'browser-dark-mode-style';
+                                                    style.innerHTML = 'html, body { background-color: #121212 !important; color: #E0E0E0 !important; } a { color: #BB86FC !important; }';
+                                                    document.head.appendChild(style);
+                                                }
+                                            })();
+                                        """.trimIndent(), null)
+                                    } else {
+                                        webView.evaluateJavascript("""
+                                            (function() {
+                                                var style = document.getElementById('browser-dark-mode-style');
+                                                if (style) style.remove();
+                                            })();
+                                        """.trimIndent(), null)
+                                    }
+                                }
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize() // Fullscreen without top padding
+                    )
+                }
+
+                // Top Left FAB: Open Nav Pane
+                FloatingActionButton(
+                    onClick = { scope.launch { drawerState.open() } },
+                    modifier = Modifier.align(Alignment.TopStart).padding(16.dp).size(40.dp),
+                    shape = CircleShape,
+                    containerColor = barColor,
+                    contentColor = if (settings.contrastMode == ContrastMode.Dark) Color(0xFF9AB0E6) else MaterialTheme.colorScheme.primary
+                ) {
+                    Icon(Icons.Default.Menu, contentDescription = "Open Nav Pane", modifier = Modifier.size(20.dp))
+                }
+
+                // Top Right Pill: Desktop Mode, Dark Mode Toggle, and Return Button
+                Surface(
+                    shape = CircleShape,
+                    color = barColor,
+                    shadowElevation = 2.dp,
+                    modifier = Modifier.align(Alignment.TopEnd).padding(16.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        IconButton(
+                            onClick = { isBrowserDarkMode = !isBrowserDarkMode },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Text("🌓", fontSize = 16.sp)
+                        }
+
+                        IconButton(
+                            onClick = { isDesktopMode = !isDesktopMode },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                androidx.compose.material.icons.Icons.Default.DesktopMac,
+                                contentDescription = "Desktop Mode",
+                                modifier = Modifier.size(20.dp),
+                                tint = if (isDesktopMode) MaterialTheme.colorScheme.primary else (if (settings.contrastMode == ContrastMode.Dark) Color(0xFF9AB0E6) else MaterialTheme.colorScheme.primary)
+                            )
+                        }
+
+                        IconButton(
+                            onClick = { showBrowserPreview = false },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = "Return",
+                                modifier = Modifier.size(20.dp),
+                                tint = if (settings.contrastMode == ContrastMode.Dark) Color(0xFF9AB0E6) else MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 

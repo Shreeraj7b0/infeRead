@@ -15,6 +15,8 @@ import com.infer.inferead.ui.screens.SplashScreen
 
 import android.net.Uri
 
+var hasShownSplashScreen = false
+
 @Composable
 fun AppNavigation(
     pendingUri: Uri? = null,
@@ -35,10 +37,13 @@ fun AppNavigation(
         }
     }
 
-    NavHost(navController = navController, startDestination = "splash") {
+    val startDestination = if (hasShownSplashScreen) "auth" else "splash"
+
+    NavHost(navController = navController, startDestination = startDestination) {
         composable("splash") {
             SplashScreen(
                 onNavigateToAuth = {
+                    hasShownSplashScreen = true
                     navController.navigate("auth") {
                         popUpTo("splash") { inclusive = true }
                     }

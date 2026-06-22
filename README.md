@@ -36,7 +36,7 @@ infeRead is a privacy-first, offline-capable reading app. Your files stay on you
 | PDF         | `.pdf`                              |
 | Text        | `.txt`, `.doc`, `.docx`             |
 | Comic/Manga | `.cbz`, `.cbr`, `.cb7`              |
-| Coding      | `.md`, `.py`, `.c`, `.java`, `.js`, `.css` |
+| Coding      | `.md`, `.py`, `.c`, `.java`, `.js`, `.css`, `.html` |
 | Images      | `.jpg`, `.jpeg`, `.png`, `.webp`, `.bmp`, `.svg`, `.heic`, `.heif` |
 
 ---
@@ -160,9 +160,14 @@ The reader screen supports all file formats with per-format rendering:
 - Auto-scroll with adjustable speed.
 
 ### TXT / Code Reader
-- Rendered as scrollable text.
-- Syntax highlighting for code files.
+- Rendered as scrollable text for general viewing and reading.
+- Syntax highlighting for pure code files.
 - Font and theme customisation shared with EPUB settings.
+- **Interactive Browser Preview**: HTML, CSS, and JS files have a dedicated preview mode (`</>` floating action button) that launches an interactive in-app browser.
+  - HTML runs natively with full interactivity.
+  - CSS injects into a boilerplate template to demonstrate styling.
+  - JS executes with a custom graphical console output.
+  - The preview includes a Desktop Viewport toggle and a Dark Mode CSS injection toggle.
 
 ### Comic / CBZ / CBR / CB7 Reader
 - Archive extraction with streaming support.

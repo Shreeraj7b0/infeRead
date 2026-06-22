@@ -460,7 +460,7 @@ fun BookShelfTab(
                                 onClick = {
                                     showPickerMenu = false
                                     addFileTargetShelfId = null
-                                    massImportFilesLauncher.launch(arrayOf("*/*")) 
+                                    massImportFilesLauncher.launch(arrayOf("application/pdf", "application/epub+zip", "text/plain", "image/png", "image/jpeg", "image/webp", "image/bmp", "image/heic", "image/heif", "application/rar", "application/x-rar-compressed", "application/zip", "application/x-zip-compressed", "application/x-cbz", "application/x-cbr", "application/x-7z-compressed", "text/html", "text/css", "text/javascript", "application/javascript", "application/json", "text/xml", "application/xml", "text/x-c", "text/x-java-source", "text/x-python", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")) 
                                 },
                                 modifier = Modifier.weight(1f).height(56.dp),
                                 shape = RoundedCornerShape(16.dp)
@@ -561,7 +561,7 @@ fun BookShelfTab(
                                                 Button(
                                                     onClick = {
                                                         showSystemMenu = false
-                                                        massImportFilesLauncher.launch(arrayOf("*/*")) 
+                                                        massImportFilesLauncher.launch(arrayOf("application/pdf", "application/epub+zip", "text/plain", "image/png", "image/jpeg", "image/webp", "image/bmp", "image/heic", "image/heif", "application/rar", "application/x-rar-compressed", "application/zip", "application/x-zip-compressed", "application/x-cbz", "application/x-cbr", "application/x-7z-compressed", "text/html", "text/css", "text/javascript", "application/javascript", "application/json", "text/xml", "application/xml", "text/x-c", "text/x-java-source", "text/x-python", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")) 
                                                     },
                                                     modifier = Modifier.weight(1f).height(56.dp),
                                                     shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
@@ -1267,14 +1267,33 @@ fun BookshelfFileItem(
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Box {
-                AsyncImage(
-                    model = file.thumbnailUri ?: if (file.format == "IMAGE" && file.filePath.startsWith("content://")) android.net.Uri.parse(file.filePath) else if (file.format == "IMAGE") java.io.File(file.filePath) else null,
-                    contentDescription = null,
-                    modifier = Modifier
-                        .size(60.dp, 85.dp)
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(Color.Gray)
-                )
+                if (file.thumbnailUri != null || file.format == "IMAGE") {
+                    AsyncImage(
+                        model = file.thumbnailUri ?: if (file.format == "IMAGE" && file.filePath.startsWith("content://")) android.net.Uri.parse(file.filePath) else if (file.format == "IMAGE") java.io.File(file.filePath) else null,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(60.dp, 85.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(Color.Gray),
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(60.dp, 85.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        androidx.compose.material3.Text(
+                            text = if (file.format == "CODING" || file.format == "TEXT") file.filePath.substringAfterLast('.', "").uppercase().takeIf { it.isNotEmpty() && it.length <= 4 } ?: file.format else file.format,
+                            style = androidx.compose.material3.MaterialTheme.typography.titleMedium,
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                            color = androidx.compose.material3.MaterialTheme.colorScheme.primary,
+                            maxLines = 1
+                        )
+                    }
+                }
                 if (file.isFinished) {
                     Icon(
                         Icons.Default.CheckCircle,

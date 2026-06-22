@@ -335,11 +335,21 @@ fun OnlineStoreTab(
                             }
                             
                             webViewRef = this
+                            tag = currentSource
                             if (currentSource == "Anna's Archive") {
                                 loadUrl(annasArchiveHostname)
                             } else if (currentSource == "Internet Archive") {
                                 loadUrl("https://archive.org/details/texts")
                             }
+                        }
+                    },
+                    update = { view ->
+                        if (currentSource == "Anna's Archive" && view.tag != "Anna's Archive") {
+                            view.tag = "Anna's Archive"
+                            view.loadUrl(annasArchiveHostname)
+                        } else if (currentSource == "Internet Archive" && view.tag != "Internet Archive") {
+                            view.tag = "Internet Archive"
+                            view.loadUrl("https://archive.org/details/texts")
                         }
                     },
                     modifier = Modifier.fillMaxSize()
