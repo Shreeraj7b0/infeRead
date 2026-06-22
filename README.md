@@ -152,14 +152,12 @@ The reader screen supports all file formats with per-format rendering:
 
 ### EPUB Reader
 - Full HTML/CSS rendering via a `WebView`.
-- Custom fonts: 12+ font options (Serif, Sans-serif, Mono, Dyslexia-friendly, etc.).
+- Custom fonts: 5+ font options (Serif, Sans-serif, Mono, Literata, etc.).
 - Font size, line height, letter spacing controls.
 - Sepia, night, custom background colour themes.
 - In-book search with previous/next result navigation.
-- Text selection → copy, highlight, look up, translate, share.
+- Text selection → copy, highlight, comment, look up.
 - Annotation manager — view, jump to, and delete all highlights.
-- Text-to-speech (TTS) with play/pause/stop and per-sentence highlighting.
-- Auto-scroll with adjustable speed.
 
 ### TXT / Code Reader
 - Rendered as scrollable text for general viewing and reading.
@@ -216,7 +214,7 @@ Switch to the **Bookshelves** tab (second tab on the Home screen) to manage shel
 
 ### Managing Bookshelves
 
-- **Create** — tap the `+` FAB.
+- **Create** — double tap the empty area.
 - **Rename** — long-press a shelf → Rename.
 - **Colour** — long-press a shelf → Change Colour (full colour picker).
 - **Delete** — long-press a shelf → Delete (books are not deleted, only the shelf).
@@ -243,17 +241,19 @@ Checklists are independent to-do/reading-list style lists, accessible from both 
 ### Checklist Items
 
 Within an open checklist:
-- **Add item** — type in the bottom input bar and press Enter or the send icon.
-- **Check/uncheck** — tap the circle checkbox.
-- **Rename item** — tap the item text to edit inline.
-- **Delete item** — swipe left on the item, or use the item's context menu.
-- **Indent / Outdent** — use Tab / Shift-Tab (or swipe right/left on the item) to nest items up to 3 levels deep.
-- **Reorder** — long-press and drag the item.
+- **Add item** — type in the top input bar and press the send icon.
+- **Check/uncheck** — tap the checkbox.
+- **Edit item** — long-press item to select `rename` edit inline.
+- **Copy item** — long-press item to select `copy`.
+- **Pin item** — long-press item to select `pin`.
+- **Delete item** — tap the delete button in a list item.
+- **Indent / Outdent** — swipe right/left on the item to nest items up to 3 levels deep.
+- **Reorder** — long-press on the top scaffold and drag the item.
 - **Mark all done / Clear all** — from the checklist context menu.
 
 ### Exporting Checklists
 
-Long-press a checklist → Export:
+Long-press a checklist → Export/Download:
 - **Export as PDF** — saves to `Downloads/infeRead/<name>.pdf`.
 - **Share as PDF** — opens the system share sheet with the PDF attached.
 - **Export as TXT** — saves to `Downloads/infeRead/<name>.txt`.
@@ -265,7 +265,7 @@ Long-press a checklist → Export:
 
 The **Online** tab (accessible from the nav drawer) opens an in-app browser for reading sources.
 
-- **Source switcher** — switch between configured online sources (e.g., Project Gutenberg, Anna's Archive).
+- **Source switcher** — switch between configured online sources (Project Gutenberg, Anna's Archive, Internet Archive).
 - **Download manager** — files downloaded from online sources are tracked in a download panel. Completed downloads are automatically added to the library.
 - **Active downloads panel** — shows in-progress downloads with file name, progress bar, and cancel button.
 - **Offline mode** — toggle in Settings to disable the online tab entirely and prevent any network access.
@@ -289,11 +289,9 @@ The **Stats screen** (accessible from the nav drawer or a dedicated stats icon) 
 
 ### Charts & Breakdowns
 
-- **Pages read per day** — bar chart for the last 7 / 30 days.
 - **Time read per day** — line chart.
 - **Format breakdown** — pie chart of library composition by file type.
 - **Most read books** — ranked list by pages read.
-- **Recently read** — chronological list of last-opened files.
 
 ---
 
@@ -333,21 +331,16 @@ Accessible via the gear icon in the nav drawer header.
 | Font size | Base font size |
 | Line height | Line spacing multiplier |
 | Letter spacing | Character spacing for readability |
-| Background colour | Custom background for EPUB/TXT |
+| Font colour | Custom font for EPUB/TXT/CODING |
 | Theme | Light, Sepia, Night, or Custom |
 | Scroll direction | Horizontal (page-by-page) or Vertical (continuous) |
-| Page animations | Enable/disable page curl |
-| Continuous scroll | PDF continuous scroll toggle |
-| Auto-scroll speed | Speed for auto-scroll feature |
-| Keep screen on | Prevent sleep while reading |
+| Justify | Justify text for EPUB/TXT |
 
 ### Library Settings
 
 | Setting | Description |
 |---|---|
 | Card layout | Grid or list view |
-| Cover size | Compact / Normal / Large thumbnails |
-| Show progress | Toggle progress bar on cards |
 | Sort within sections | Alphabetical, Date Added, Last Read, Rating |
 
 ### Import Settings
