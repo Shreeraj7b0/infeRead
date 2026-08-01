@@ -1,7 +1,9 @@
 
 # infeRead
 
-infeRead is a privacy-centric, multi-format reading application for Android designed to provide a premium, distraction-free reading experience. Built from the ground up to respect your device storage and data privacy, infeRead operates entirely offline and connects directly to your existing documents without duplicating files.\
+infeRead is a privacy-centric, multi-format reading application for Android designed to provide a premium, distraction-free reading experience. Built from the ground up to respect your device storage and data privacy, infeRead operates entirely offline and connects directly to your existing documents without duplicating files.
+
+*Made with Antigravity.*
 
 ---
 
